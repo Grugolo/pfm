@@ -1,6 +1,7 @@
 # pfm
 Personal Finance Manager
 
+```
 my-finance-app/
 ├── index.html
 ├── css/
@@ -11,3 +12,4 @@ my-finance-app/
     ├── parser.js
     ├── labeler.js
     └── exporter.js
+```
