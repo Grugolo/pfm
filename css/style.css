@@ -1,0 +1,161 @@
+:root {
+    --primary-color: #1f4e78;
+    --primary-hover: #163857;
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --text-muted: #666666;
+    --border-color: #e0e0e0;
+    --income-color: #2e7d32;
+    --expense-color: #c62828;
+    --badge-bg: #e3f2fd;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+
+.navbar {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.navbar h1 { font-size: 1.3rem; }
+
+.container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 15px;
+}
+
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.tab-btn {
+    padding: 12px 20px;
+    background: none;
+    border: none;
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+}
+
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.card {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.dropzone {
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    background: #fafafa;
+    margin-top: 15px;
+}
+
+.dropzone p { margin-bottom: 15px; color: var(--text-muted); }
+
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.stat-card { text-align: center; }
+.stat-title { font-size: 0.85rem; color: var(--text-muted); display: block; }
+.stat-value { font-size: 1.5rem; font-weight: bold; margin-top: 5px; display: block; }
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.filters { display: flex; gap: 10px; flex-grow: 1; }
+.filters input, .filters select {
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    outline: none;
+}
+.filters input { flex-grow: 1; }
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 0.9rem;
+}
+
+.btn-primary { background: var(--primary-color); color: white; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-secondary { background: #5c6bc0; color: white; }
+.btn-success { background: #2e7d32; color: white; }
+.btn-outline { background: white; border: 1px solid white; color: var(--primary-color); }
+.btn-danger-sm { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; padding: 4px 8px; font-size: 0.75rem; }
+
+.table-container { overflow-x: auto; padding: 0; }
+table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
+th, td { padding: 12px 15px; border-bottom: 1px solid var(--border-color); }
+th { background-color: var(--primary-color); color: white; }
+
+.amount-income { color: var(--income-color); font-weight: bold; }
+.amount-expense { color: var(--expense-color); font-weight: bold; }
+
+.badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    background-color: var(--badge-bg);
+    color: var(--primary-color);
+}
+
+.badge-status { background-color: #e8f5e9; color: #2e7d32; }
+.badge-status.MODIFIED { background-color: #fff3e0; color: #ef6c00; }
+.badge-status.DELETED { background-color: #ffebee; color: #c62828; }
+
+.status-list { margin-top: 10px; font-size: 0.85rem; color: var(--income-color); }
