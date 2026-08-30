@@ -15,10 +15,10 @@
     <header class="navbar">
         <h1>💳 Personal Finance</h1>
         <div class="header-actions">
-            <!-- 🌟 NUOVO PULSANTE IMPOSTAZIONI -->
-            <button class="btn btn-outline" onclick="app.openSettingsModal()">⚙️ Impostazioni</button>
-            <button class="btn btn-outline" onclick="app.openLoadModal()">📂 Carica</button>
-            <button class="btn btn-primary" onclick="app.openSaveModal()">💾 Salva</button>
+            <!-- 🌟 PULSANTI NAVBAR SOLO EMOJI -->
+            <button class="btn btn-outline" title="Impostazioni" aria-label="Impostazioni" onclick="app.openSettingsModal()">⚙️</button>
+            <button class="btn btn-outline" title="Carica" aria-label="Carica" onclick="app.openLoadModal()">📂</button>
+            <button class="btn btn-primary" title="Salva" aria-label="Salva" onclick="app.openSaveModal()">💾</button>
         </div>
     </header>
 
@@ -40,7 +40,7 @@
                 </div>
             </div>
 
-            <!-- TABELLA TRANSAZIONI CON FILTRI DOPPI (MIN/MAX, DA/A, INCLUDI/ESCLUDI) -->
+            <!-- TABELLA TRANSAZIONI CON FILTRI DOPPI A 2 RIGHE (MIN/INCLUDI SOPRA, MAX/ESCLUDI SOTTO) -->
             <div class="card table-container">
                 <table>
                     <thead>
@@ -56,27 +56,46 @@
                         </tr>
                         <tr class="table-filter-row">
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="number" id="txF_id_min" class="table-filter-input" placeholder="Min" oninput="app.renderTransactions()">
                                     <input type="number" id="txF_id_max" class="table-filter-input" placeholder="Max" oninput="app.renderTransactions()">
                                 </div>
                             </th>
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="date" id="txF_date_start" class="table-filter-input" onchange="app.renderTransactions()">
                                     <input type="date" id="txF_date_end" class="table-filter-input" onchange="app.renderTransactions()">
                                 </div>
                             </th>
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="number" step="0.01" id="txF_amt_min" class="table-filter-input" placeholder="Min €" oninput="app.renderTransactions()">
                                     <input type="number" step="0.01" id="txF_amt_max" class="table-filter-input" placeholder="Max €" oninput="app.renderTransactions()">
                                 </div>
                             </th>
-                            <th><input type="text" id="txF_category" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
-                            <th><input type="text" id="txF_title" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
-                            <th><input type="text" id="txF_note" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
-                            <th><select id="txF_account" class="table-filter-input" onchange="app.renderTransactions()"><option value="">Tutti</option></select></th>
+                            <th>
+                                <div class="filter-stacked-box">
+                                    <input type="text" id="txF_category_inc" class="table-filter-input" placeholder="Includi" oninput="app.renderTransactions()">
+                                    <input type="text" id="txF_category_exc" class="table-filter-input" placeholder="Escludi" oninput="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="filter-stacked-box">
+                                    <input type="text" id="txF_title_inc" class="table-filter-input" placeholder="Includi" oninput="app.renderTransactions()">
+                                    <input type="text" id="txF_title_exc" class="table-filter-input" placeholder="Escludi" oninput="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="filter-stacked-box">
+                                    <input type="text" id="txF_note_inc" class="table-filter-input" placeholder="Includi" oninput="app.renderTransactions()">
+                                    <input type="text" id="txF_note_exc" class="table-filter-input" placeholder="Escludi" oninput="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th>
+                                <select id="txF_account" class="table-filter-input" onchange="app.renderTransactions()">
+                                    <option value="">Tutti</option>
+                                </select>
+                            </th>
                             <th></th>
                         </tr>
                     </thead>
@@ -85,7 +104,7 @@
             </div>
         </section>
 
-        <!-- TAB AUDIT LOG CON FILTRI DOPPI -->
+        <!-- TAB AUDIT LOG CON FILTRI DOPPI A 2 RIGHE -->
         <section id="auditTab" class="tab-content">
             <div class="card table-container">
                 <table>
@@ -101,23 +120,33 @@
                         </tr>
                         <tr class="table-filter-row">
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="number" id="logF_id_min" class="table-filter-input" placeholder="Min" oninput="app.renderAuditLog()">
                                     <input type="number" id="logF_id_max" class="table-filter-input" placeholder="Max" oninput="app.renderAuditLog()">
                                 </div>
                             </th>
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="number" id="logF_txId_min" class="table-filter-input" placeholder="Min" oninput="app.renderAuditLog()">
                                     <input type="number" id="logF_txId_max" class="table-filter-input" placeholder="Max" oninput="app.renderAuditLog()">
                                 </div>
                             </th>
-                            <th><input type="text" id="logF_action" class="table-filter-input" placeholder="Azione !escludi" oninput="app.renderAuditLog()"></th>
-                            <th><input type="text" id="logF_field" class="table-filter-input" placeholder="Campo !escludi" oninput="app.renderAuditLog()"></th>
+                            <th>
+                                <div class="filter-stacked-box">
+                                    <input type="text" id="logF_action_inc" class="table-filter-input" placeholder="Includi" oninput="app.renderAuditLog()">
+                                    <input type="text" id="logF_action_exc" class="table-filter-input" placeholder="Escludi" oninput="app.renderAuditLog()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="filter-stacked-box">
+                                    <input type="text" id="logF_field_inc" class="table-filter-input" placeholder="Includi" oninput="app.renderAuditLog()">
+                                    <input type="text" id="logF_field_exc" class="table-filter-input" placeholder="Escludi" oninput="app.renderAuditLog()">
+                                </div>
+                            </th>
                             <th></th>
                             <th></th>
                             <th>
-                                <div class="range-filter-box">
+                                <div class="filter-stacked-box">
                                     <input type="date" id="logF_date_start" class="table-filter-input" onchange="app.renderAuditLog()">
                                     <input type="date" id="logF_date_end" class="table-filter-input" onchange="app.renderAuditLog()">
                                 </div>
@@ -143,7 +172,7 @@
         </button>
     </nav>
 
-    <!-- 🌟 MODALE IMPOSTAZIONI CON CARICAMENTO CONFIGURAZIONI -->
+    <!-- MODALE IMPOSTAZIONI CON CARICAMENTO CONFIGURAZIONI -->
     <div id="settingsModal" class="modal-overlay">
         <div class="modal-content">
             <h3>⚙️ Impostazioni e Configurazione</h3>
