@@ -6,7 +6,7 @@
     <title>Finance Control Hub</title>
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- Libraries -->
+    <!-- External JS Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
@@ -29,7 +29,7 @@
             <div class="grid-2">
                 <div class="card">
                     <h3>1. Regole (`sus.xlsx` / `sources.xlsx`)</h3>
-                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica i file di configurazione per il categorizzatore e le banche.</p>
+                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica i file di configurazione per il labeling e la mappatura conti.</p>
                     <div class="dropzone">
                         <p>Seleziona o trascina i file di configurazione</p>
                         <input type="file" id="configFileInput" multiple accept=".xlsx" hidden>
@@ -53,6 +53,7 @@
 
         <!-- TAB 2: TRANSAZIONI -->
         <section id="transactionsTab" class="tab-content">
+            <!-- Summary Card: Titoli sopra, Numeri sotto -->
             <div class="summary-cards card">
                 <div class="stat-card">
                     <span class="stat-title">N° Tx</span>
@@ -68,13 +69,23 @@
                 </div>
             </div>
 
-            <div class="toolbar">
-                <input type="text" id="searchInput" class="search-input" placeholder="🔍 Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
-                <select id="accountFilter" class="select-input" onchange="app.renderTransactions()">
-                    <option value="">Tutti i Conti</option>
-                </select>
-                <button class="btn btn-outline" onclick="app.exportCSV()">📄 CSV</button>
-                <button class="btn btn-primary" onclick="app.exportXLSX()">📊 Excel</button>
+            <!-- Toolbar con Cerca, Filtro Account, Filtro Date ed Export -->
+            <div class="toolbar card">
+                <div class="filter-row">
+                    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
+                    <select id="accountFilter" class="select-input" onchange="app.renderTransactions()">
+                        <option value="">Tutti i Conti</option>
+                    </select>
+                </div>
+                <div class="filter-row">
+                    <span class="date-label">Da:</span>
+                    <input type="date" id="startDateFilter" class="date-input" onchange="app.renderTransactions()">
+                    <span class="date-label">A:</span>
+                    <input type="date" id="endDateFilter" class="date-input" onchange="app.renderTransactions()">
+                    
+                    <button class="btn btn-outline" onclick="app.exportCSV()" style="margin-left: auto;">📄 CSV</button>
+                    <button class="btn btn-excel" onclick="app.exportXLSX()">📊 Excel</button>
+                </div>
             </div>
 
             <div class="card table-container">
@@ -117,7 +128,7 @@
         </section>
     </main>
 
-    <!-- 🌟 NAVBAR FLOTTANTE IN BASSO -->
+    <!-- Barra Flottante in Basso -->
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="app.switchTab('importTab', this)">
             <span>📥</span> Importa
