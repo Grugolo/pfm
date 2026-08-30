@@ -15,6 +15,8 @@
     <header class="navbar">
         <h1>💳 Personal Finance</h1>
         <div class="header-actions">
+            <!-- 🌟 NUOVO PULSANTE IMPOSTAZIONI -->
+            <button class="btn btn-outline" onclick="app.openSettingsModal()">⚙️ Impostazioni</button>
             <button class="btn btn-outline" onclick="app.openLoadModal()">📂 Carica</button>
             <button class="btn btn-primary" onclick="app.openSaveModal()">💾 Salva</button>
         </div>
@@ -38,7 +40,7 @@
                 </div>
             </div>
 
-            <!-- TABELLA TRANSAZIONI CON FILTRI ED INTESTAZIONI ORDINABILI -->
+            <!-- TABELLA TRANSAZIONI CON FILTRI DOPPI (MIN/MAX, DA/A, INCLUDI/ESCLUDI) -->
             <div class="card table-container">
                 <table>
                     <thead>
@@ -53,12 +55,27 @@
                             <th>Azioni</th>
                         </tr>
                         <tr class="table-filter-row">
-                            <th><input type="number" id="txF_id" class="table-filter-input" placeholder="ID" oninput="app.renderTransactions()"></th>
-                            <th><input type="date" id="txF_date" class="table-filter-input" onchange="app.renderTransactions()"></th>
-                            <th><input type="number" id="txF_amount" class="table-filter-input" placeholder="€ min" oninput="app.renderTransactions()"></th>
-                            <th><input type="text" id="txF_category" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
-                            <th><input type="text" id="txF_title" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
-                            <th><input type="text" id="txF_note" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="number" id="txF_id_min" class="table-filter-input" placeholder="Min" oninput="app.renderTransactions()">
+                                    <input type="number" id="txF_id_max" class="table-filter-input" placeholder="Max" oninput="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="date" id="txF_date_start" class="table-filter-input" onchange="app.renderTransactions()">
+                                    <input type="date" id="txF_date_end" class="table-filter-input" onchange="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="number" step="0.01" id="txF_amt_min" class="table-filter-input" placeholder="Min €" oninput="app.renderTransactions()">
+                                    <input type="number" step="0.01" id="txF_amt_max" class="table-filter-input" placeholder="Max €" oninput="app.renderTransactions()">
+                                </div>
+                            </th>
+                            <th><input type="text" id="txF_category" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
+                            <th><input type="text" id="txF_title" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
+                            <th><input type="text" id="txF_note" class="table-filter-input" placeholder="testo !escludi" oninput="app.renderTransactions()"></th>
                             <th><select id="txF_account" class="table-filter-input" onchange="app.renderTransactions()"><option value="">Tutti</option></select></th>
                             <th></th>
                         </tr>
@@ -68,7 +85,7 @@
             </div>
         </section>
 
-        <!-- TAB AUDIT LOG CON FILTRI INTEGRATI -->
+        <!-- TAB AUDIT LOG CON FILTRI DOPPI -->
         <section id="auditTab" class="tab-content">
             <div class="card table-container">
                 <table>
@@ -83,13 +100,28 @@
                             <th class="sortable" onclick="app.sortTable('audit', 'timestamp')">Data e Ora <span id="sort_audit_timestamp" class="sort-icon"></span></th>
                         </tr>
                         <tr class="table-filter-row">
-                            <th><input type="number" id="logF_id" class="table-filter-input" placeholder="ID" oninput="app.renderAuditLog()"></th>
-                            <th><input type="number" id="logF_txId" class="table-filter-input" placeholder="Tx ID" oninput="app.renderAuditLog()"></th>
-                            <th><input type="text" id="logF_action" class="table-filter-input" placeholder="Azione" oninput="app.renderAuditLog()"></th>
-                            <th><input type="text" id="logF_field" class="table-filter-input" placeholder="Campo" oninput="app.renderAuditLog()"></th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="number" id="logF_id_min" class="table-filter-input" placeholder="Min" oninput="app.renderAuditLog()">
+                                    <input type="number" id="logF_id_max" class="table-filter-input" placeholder="Max" oninput="app.renderAuditLog()">
+                                </div>
+                            </th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="number" id="logF_txId_min" class="table-filter-input" placeholder="Min" oninput="app.renderAuditLog()">
+                                    <input type="number" id="logF_txId_max" class="table-filter-input" placeholder="Max" oninput="app.renderAuditLog()">
+                                </div>
+                            </th>
+                            <th><input type="text" id="logF_action" class="table-filter-input" placeholder="Azione !escludi" oninput="app.renderAuditLog()"></th>
+                            <th><input type="text" id="logF_field" class="table-filter-input" placeholder="Campo !escludi" oninput="app.renderAuditLog()"></th>
                             <th></th>
                             <th></th>
-                            <th><input type="date" id="logF_date" class="table-filter-input" onchange="app.renderAuditLog()"></th>
+                            <th>
+                                <div class="range-filter-box">
+                                    <input type="date" id="logF_date_start" class="table-filter-input" onchange="app.renderAuditLog()">
+                                    <input type="date" id="logF_date_end" class="table-filter-input" onchange="app.renderAuditLog()">
+                                </div>
+                            </th>
                         </tr>
                     </thead>
                     <tbody id="auditTableBody"></tbody>
@@ -111,11 +143,28 @@
         </button>
     </nav>
 
+    <!-- 🌟 MODALE IMPOSTAZIONI CON CARICAMENTO CONFIGURAZIONI -->
+    <div id="settingsModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>⚙️ Impostazioni e Configurazione</h3>
+            <p class="text-muted" style="font-size: 0.8rem; margin-bottom: 12px;">Carica qui le tue regole personalizzate ed etichette:</p>
+            <div class="form-group">
+                <label>File di Configurazione (.xlsx):</label>
+                <input type="file" id="configFileInput" multiple accept=".xlsx" hidden onchange="app.handleConfigLoad(event)">
+                <button class="btn btn-outline" style="width: 100%; text-align: left;" onclick="document.getElementById('configFileInput').click()">📌 Carica sus.xlsx / sources.xlsx</button>
+            </div>
+            <div id="configStatus" class="status-log"></div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="app.closeSettingsModal()">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODALE CARICAMENTO UNIFICATO -->
     <div id="loadModal" class="modal-overlay">
         <div class="modal-content">
-            <h3>📂 Carica File</h3>
-            <p class="text-muted" style="font-size: 0.8rem;">Seleziona file .db, regole (.xlsx) o report bancari (.xlsx):</p>
+            <h3>📂 Carica Dati</h3>
+            <p class="text-muted" style="font-size: 0.8rem;">Seleziona database SQLite (.db) o estratti conto bancari (.xlsx):</p>
             <div class="checkbox-group">
                 <input type="file" id="unifiedFileInput" multiple accept=".db,.sqlite,.xlsx" hidden onchange="app.handleUnifiedLoad(event)">
                 <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('unifiedFileInput').click()">Sfoglia File (.db, .xlsx)</button>
@@ -145,7 +194,7 @@
         </div>
     </div>
 
-    <!-- MODALE INPUT/EDIT TRANSAZIONE (CON INPUT DATA E NUMERO) -->
+    <!-- MODALE INPUT/EDIT TRANSAZIONE -->
     <div id="txFormModal" class="modal-overlay">
         <div class="modal-content">
             <h3 id="txModalTitle">Aggiungi Transazione</h3>
