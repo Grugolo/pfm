@@ -3,7 +3,7 @@ class AutoLabeler {
         this.notWords = new Set();
         this.expenseRules = [];
         this.incomeRules = [];
-        this.accountMappings = []; // Regole da sources.xlsx
+        this.accountMappings = [];
     }
 
     loadSusFromWorkbook(wb) {
@@ -15,16 +15,22 @@ class AutoLabeler {
         this.notWords.clear();
 
         rows.slice(1).forEach(r => {
-            if (r[0]) this.notWords.add(String(r[0]).trim().toLowerCase());
+            // Colonna 0: notWords
+            if (r[0] !== undefined && r[0] !== null && String(r[0]).trim() !== '') {
+                this.notWords.add(String(r[0]).trim().toLowerCase());
+            }
 
-            if (r[1]) {
+            // Colonne 1, 2, 3: Uscite (kw, category, title)
+            if (r[1] !== undefined && r[1] !== null && String(r[1]).trim() !== '') {
                 this.expenseRules.push({
                     kw: String(r[1]).trim().toLowerCase(),
                     category: r[2] ? String(r[2]).trim() : "nc",
                     title: r[3] ? String(r[3]).trim() : "nc"
                 });
             }
-            if (r[4]) {
+
+            // Colonne 4, 5, 6: Entrate (kw, category, title)
+            if (r[4] !== undefined && r[4] !== null && String(r[4]).trim() !== '') {
                 this.incomeRules.push({
                     kw: String(r[4]).trim().toLowerCase(),
                     category: r[5] ? String(r[5]).trim() : "nc",
@@ -56,26 +62,37 @@ class AutoLabeler {
                 return map.accountCode;
             }
         }
-        // Fallback intelligenti se sources.xlsx non è ancora caricato
         if (fn.includes("ing")) return "ing";
         if (fn.includes("satispay") || fn.includes("ssp")) return "ssp";
         if (fn.includes("prepagata") || fn.includes("cc2")) return "cc2";
-        return "isp"; // default
+        return "isp";
     }
 
+    // Pulisce il testo rimuovendo le `notWords`, mantenendo la struttura esattamente come il codice Python
     cleanText(text) {
         if (!text) return "";
-        const words = String(text).toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/);
-        return words.filter(w => w && !this.notWords.has(w)).join(' ');
+        let cleaned = String(text).toLowerCase();
+        
+        // Sostituisce ogni stringa presente in notWords con uno spazio vuoto
+        this.notWords.forEach(word => {
+            if (word) {
+                // Regex per sostituire le parole esatte ignorando maiuscole
+                const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+                cleaned = cleaned.replace(regex, ' ');
+            }
+        });
+
+        return cleaned.replace(/\s+/g, ' ').trim();
     }
 
     predict(note, amount) {
         if (!note) return { category: "nc", title: "nc" };
-        const cleaned = this.cleanText(note);
+        
+        const cleanedNote = this.cleanText(note);
         const rules = amount > 0 ? this.incomeRules : this.expenseRules;
 
         for (let rule of rules) {
-            if (cleaned.includes(rule.kw)) {
+            if (rule.kw && cleanedNote.includes(rule.kw)) {
                 return { category: rule.category, title: rule.title };
             }
         }
