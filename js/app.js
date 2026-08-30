@@ -19,22 +19,23 @@ class App {
     }
 
     bindEvents() {
-        // Dropzone Config
-        const configInput = document.getElementById('configFileInput');
-        configInput.addEventListener('change', (e) => this.handleConfigFiles(e.target.files));
-
-        // Dropzone Bank
-        const bankInput = document.getElementById('bankFileInput');
-        bankInput.addEventListener('change', (e) => this.handleBankFiles(e.target.files));
+        document.getElementById('configFileInput').addEventListener('change', (e) => this.handleConfigFiles(e.target.files));
+        document.getElementById('bankFileInput').addEventListener('change', (e) => this.handleBankFiles(e.target.files));
     }
 
     async handleConfigFiles(files) {
+        const statusDiv = document.getElementById('configStatus');
         for (let file of files) {
             const buffer = await file.arrayBuffer();
             const wb = XLSX.read(buffer, { type: 'array' });
-            if (file.name.toLowerCase().includes('sus')) {
+            const fn = file.name.toLowerCase();
+
+            if (fn.includes('sus')) {
                 this.labeler.loadSusFromWorkbook(wb);
-                document.getElementById('configStatus').innerHTML += `<div>✅ Regole sus.xlsx caricate!</div>`;
+                statusDiv.innerHTML += `<div>✅ Regole <strong>sus.xlsx</strong> caricate!</div>`;
+            } else if (fn.includes('sources')) {
+                this.labeler.loadSourcesFromWorkbook(wb);
+                statusDiv.innerHTML += `<div>✅ Mappatura <strong>sources.xlsx</strong> caricata!</div>`;
             }
         }
     }
@@ -46,7 +47,7 @@ class App {
             const records = BankParser.parseExcel(buffer, file.name, this.labeler);
             totalInserted += this.dbMgr.insertTransactions(records);
         }
-        document.getElementById('importStatus').innerHTML = `<div>🎉 Inserite ${totalInserted} nuove transazioni!</div>`;
+        document.getElementById('importStatus').innerHTML = `<div>🎉 Elaborazione completata: <strong>${totalInserted}</strong> nuove transazioni aggiunte nel DB!</div>`;
         this.renderTransactions();
         this.renderAuditLog();
     }
@@ -62,7 +63,7 @@ class App {
         let inc = 0, exp = 0, count = 0;
 
         txs.filter(t => {
-            const matchSearch = t.note.toLowerCase().includes(search) || t.title.toLowerCase().includes(search);
+            const matchSearch = t.note.toLowerCase().includes(search) || t.title.toLowerCase().includes(search) || t.category.toLowerCase().includes(search);
             const matchAcc = !accFilter || t.account === accFilter;
             return matchSearch && matchAcc;
         }).forEach(t => {
@@ -80,7 +81,10 @@ class App {
                 <td>${t.note}</td>
                 <td><strong>${t.account.toUpperCase()}</strong></td>
                 <td><span class="badge badge-status ${t.status}">${t.status}</span></td>
-                <td><button class="btn btn-danger-sm" onclick="app.deleteTx(${t.id})">Cancella</button></td>
+                <td>
+                    <button class="btn btn-secondary-sm" onclick="app.editTx(${t.id})">✏️ Modifica</button>
+                    <button class="btn btn-danger-sm" onclick="app.deleteTx(${t.id})">🗑️</button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -88,6 +92,39 @@ class App {
         document.getElementById('totalTxCount').textContent = count;
         document.getElementById('totalIncome').textContent = `€ ${inc.toFixed(2)}`;
         document.getElementById('totalExpense').textContent = `€ ${exp.toFixed(2)}`;
+    }
+
+    editTx(id) {
+        const txs = this.dbMgr.getActiveTransactions();
+        const tx = txs.find(t => t.id === id);
+        if (!tx) return;
+
+        const newCat = prompt("Categoria:", tx.category);
+        if (newCat === null) return;
+
+        const newTitle = prompt("Titolo:", tx.title);
+        if (newTitle === null) return;
+
+        const newNote = prompt("Nota:", tx.note);
+        if (newNote === null) return;
+
+        const newAmtStr = prompt("Importo:", tx.amount);
+        if (newAmtStr === null) return;
+        const newAmt = parseFloat(newAmtStr) || tx.amount;
+
+        const newAcc = prompt("Account (es. isp, ing, ssp):", tx.account);
+        if (newAcc === null) return;
+
+        this.dbMgr.updateTransaction(id, {
+            category: newCat.trim(),
+            title: newTitle.trim(),
+            note: newNote.trim(),
+            amount: newAmt,
+            account: newAcc.trim().toLowerCase()
+        });
+
+        this.renderTransactions();
+        this.renderAuditLog();
     }
 
     renderAuditLog() {
@@ -128,10 +165,15 @@ class App {
     async uploadDatabase(e) {
         const file = e.target.files[0];
         if (file) {
-            const buffer = await file.arrayBuffer();
-            this.dbMgr.loadBinary(buffer);
-            this.renderTransactions();
-            this.renderAuditLog();
+            try {
+                const buffer = await file.arrayBuffer();
+                this.dbMgr.loadBinary(buffer);
+                this.renderTransactions();
+                this.renderAuditLog();
+                alert("Database money.db caricato con successo!");
+            } catch (err) {
+                alert("Errore durante il caricamento del DB: " + err.message);
+            }
         }
     }
 }
