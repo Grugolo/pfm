@@ -6,7 +6,6 @@ class App {
 
     async init() {
         await this.dbMgr.init();
-        this.bindEvents();
         this.renderTransactions();
         this.renderAuditLog();
     }
@@ -19,41 +18,104 @@ class App {
         btn.classList.add('active');
     }
 
-    bindEvents() {
-        document.getElementById('configFileInput').addEventListener('change', (e) => this.handleConfigFiles(e.target.files));
-        document.getElementById('bankFileInput').addEventListener('change', (e) => this.handleBankFiles(e.target.files));
-    }
+    /* 🌟 GESTIONE MODALE CARICA UNIFICATO */
+    openLoadModal() { document.getElementById('loadModal').classList.add('active'); }
+    closeLoadModal() { document.getElementById('loadModal').classList.remove('active'); }
 
-    async handleConfigFiles(files) {
-        const statusDiv = document.getElementById('configStatus');
+    async handleUnifiedLoad(e) {
+        const files = e.target.files;
+        const statusDiv = document.getElementById('loadStatus');
+        statusDiv.innerHTML = "";
+
         for (let file of files) {
-            const buffer = await file.arrayBuffer();
-            const wb = XLSX.read(buffer, { type: 'array' });
             const fn = file.name.toLowerCase();
+            const buffer = await file.arrayBuffer();
 
-            if (fn.includes('sus')) {
+            if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
+                this.dbMgr.loadBinary(buffer);
+                statusDiv.innerHTML += `<div>✅ DB <strong>${file.name}</strong> caricato!</div>`;
+            } else if (fn.includes('sus')) {
+                const wb = XLSX.read(buffer, { type: 'array' });
                 this.labeler.loadSusFromWorkbook(wb);
                 statusDiv.innerHTML += `<div>✅ Regole <strong>sus.xlsx</strong> caricate!</div>`;
             } else if (fn.includes('sources')) {
+                const wb = XLSX.read(buffer, { type: 'array' });
                 this.labeler.loadSourcesFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Mappatura <strong>sources.xlsx</strong> caricata!</div>`;
+                statusDiv.innerHTML += `<div>✅ Sorgenti <strong>sources.xlsx</strong> caricate!</div>`;
+            } else if (fn.endsWith('.xlsx')) {
+                const records = BankParser.parseExcel(buffer, file.name, this.labeler);
+                const count = this.dbMgr.insertTransactions(records);
+                statusDiv.innerHTML += `<div>✅ <strong>${file.name}</strong>: ${count} nuove transazioni!</div>`;
             }
         }
-    }
-
-    async handleBankFiles(files) {
-        let totalInserted = 0;
-        for (let file of files) {
-            const buffer = await file.arrayBuffer();
-            const records = BankParser.parseExcel(buffer, file.name, this.labeler);
-            totalInserted += this.dbMgr.insertTransactions(records);
-        }
-        document.getElementById('importStatus').innerHTML = `<div>🎉 Elaborazione completata: <strong>${totalInserted}</strong> nuove transazioni aggiunte nel DB!</div>`;
         this.renderTransactions();
         this.renderAuditLog();
     }
 
-    // Popola dinamicamente il selettore degli account
+    /* 🌟 GESTIONE MODALE SALVA UNIFICATO MULTI-SELECT */
+    openSaveModal() { document.getElementById('saveModal').classList.add('active'); }
+    closeSaveModal() { document.getElementById('saveModal').classList.remove('active'); }
+
+    executeSave() {
+        const txs = this.dbMgr.getActiveTransactions();
+        const audit = this.dbMgr.getAuditLog();
+
+        if (document.getElementById('chkDb').checked) {
+            const blob = new Blob([this.dbMgr.exportBinary()], { type: 'application/x-sqlite3' });
+            Exporter.downloadBlob(blob, 'money.db');
+        }
+        if (document.getElementById('chkXlsx').checked) {
+            Exporter.exportXLSX(txs);
+        }
+        if (document.getElementById('chkCsv').checked) {
+            Exporter.exportCSV(txs);
+        }
+        if (document.getElementById('chkAudit').checked) {
+            const csvContent = "data:text/csv;charset=utf-8," + 
+                ["Log ID,Tx ID,Action,Field,Old,New,Timestamp"].concat(audit.map(a => `${a.id},${a.transaction_id},${a.action},${a.field_changed},${a.old_value},${a.new_value},${a.timestamp}`)).join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "audit_log.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        this.closeSaveModal();
+    }
+
+    /* 🌟 INSERIMENTO MANUALE CON FAB '+' */
+    addManualTransaction() {
+        const today = new Date().toISOString().split('T')[0];
+        const dateStr = prompt("Data (YYYY-MM-DD):", today);
+        if (!dateStr) return;
+
+        const amtStr = prompt("Importo (es. -15.50 o 50):", "0.00");
+        if (!amtStr) return;
+        const amount = parseFloat(amtStr) || 0;
+
+        const note = prompt("Nota / Descrizione:", "");
+        if (note === null) return;
+
+        const predicted = this.labeler.predict(note, amount);
+
+        const category = prompt("Categoria:", predicted.category) || "nc";
+        const title = prompt("Titolo:", predicted.title) || "nc";
+        const account = prompt("Account (es. isp, ing, ssp):", "isp") || "isp";
+
+        this.dbMgr.insertSingleTransaction({
+            date_str: dateStr.trim(),
+            amount: amount,
+            category: category.trim(),
+            title: title.trim(),
+            note: note.trim(),
+            account: account.trim().toLowerCase()
+        });
+
+        this.renderTransactions();
+        this.renderAuditLog();
+    }
+
     populateAccountSelect(accounts) {
         const select = document.getElementById('accountFilter');
         const currentVal = select.value;
@@ -77,7 +139,6 @@ class App {
         tbody.innerHTML = '';
         const txs = this.dbMgr.getActiveTransactions();
 
-        // Estrazione di tutti gli account presenti per popolare la tendina del filtro
         const uniqueAccounts = [...new Set(txs.map(t => t.account))];
         this.populateAccountSelect(uniqueAccounts);
 
@@ -160,7 +221,7 @@ class App {
             tr.innerHTML = `
                 <td>${log.id}</td>
                 <td>${log.transaction_id}</td>
-                <td><span class="badge badge-status">${log.action}</span></td>
+                <td><span class="badge badge-status ${log.action}">${log.action}</span></td>
                 <td>${log.field_changed || '-'}</td>
                 <td>${log.old_value || '-'}</td>
                 <td>${log.new_value || '-'}</td>
@@ -175,30 +236,6 @@ class App {
             this.dbMgr.softDeleteTransaction(id);
             this.renderTransactions();
             this.renderAuditLog();
-        }
-    }
-
-    exportCSV() { Exporter.exportCSV(this.dbMgr.getActiveTransactions()); }
-    exportXLSX() { Exporter.exportXLSX(this.dbMgr.getActiveTransactions()); }
-
-    downloadDatabase() {
-        const arrayBuffer = this.dbMgr.exportBinary();
-        const blob = new Blob([arrayBuffer], { type: 'application/x-sqlite3' });
-        Exporter.downloadBlob(blob, 'money.db');
-    }
-
-    async uploadDatabase(e) {
-        const file = e.target.files[0];
-        if (file) {
-            try {
-                const buffer = await file.arrayBuffer();
-                this.dbMgr.loadBinary(buffer);
-                this.renderTransactions();
-                this.renderAuditLog();
-                alert("Database money.db caricato con successo!");
-            } catch (err) {
-                alert("Errore durante il caricamento del DB: " + err.message);
-            }
         }
     }
 }
