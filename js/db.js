@@ -12,7 +12,6 @@ class DatabaseManager {
         this.createTables();
     }
 
-    // Ritorna la data/ora locale formattata YYYY-MM-DD HH:mm:ss
     getNowLocal() {
         const d = new Date();
         const pad = n => String(n).padStart(2, '0');
@@ -51,6 +50,19 @@ class DatabaseManager {
 
     loadBinary(arrayBuffer) {
         this.db = new this.SQL.Database(new Uint8Array(arrayBuffer));
+    }
+
+    insertSingleTransaction(rec) {
+        const now = this.getNowLocal();
+        this.db.run(`
+            INSERT INTO transactions (date_str, amount, category, title, note, account, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'MANUAL', ?, ?)
+        `, [rec.date_str, rec.amount, rec.category, rec.title, rec.note, rec.account, now, now]);
+
+        const lastId = this.db.exec("SELECT last_insert_rowid()")[0].values[0][0];
+        this.db.run(`INSERT INTO audit_log (transaction_id, action, new_value, timestamp) VALUES (?, 'INSERT_MANUAL', ?, ?)`, 
+            [lastId, `${rec.title} (€${rec.amount})`, now]);
+        return lastId;
     }
 
     insertTransactions(records) {
