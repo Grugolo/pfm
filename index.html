@@ -15,7 +15,6 @@
     <header class="navbar">
         <h1>💳 Personal Finance</h1>
         <div class="header-actions">
-            <!-- 🌟 PULSANTI UNIFICATI CARICA E SALVA -->
             <button class="btn btn-outline" onclick="app.openLoadModal()">📂 Carica</button>
             <button class="btn btn-primary" onclick="app.openSaveModal()">💾 Salva</button>
         </div>
@@ -24,7 +23,6 @@
     <main class="container">
         <!-- TAB TRANSAZIONI -->
         <section id="transactionsTab" class="tab-content active">
-            <!-- Summary Card: Font reattivo con clamp() -->
             <div class="summary-cards card">
                 <div class="stat-card">
                     <span class="stat-title">N° Trx</span>
@@ -40,34 +38,29 @@
                 </div>
             </div>
 
-            <!-- Toolbar con Filtri -->
-            <div class="toolbar card">
-                <div class="filter-row">
-                    <input type="text" id="searchInput" class="search-input" placeholder="🔍 Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
-                    <select id="accountFilter" class="select-input" onchange="app.renderTransactions()">
-                        <option value="">Tutti i Conti</option>
-                    </select>
-                </div>
-                <div class="filter-row">
-                    <span class="date-label">Da:</span>
-                    <input type="date" id="startDateFilter" class="date-input" onchange="app.renderTransactions()">
-                    <span class="date-label">A:</span>
-                    <input type="date" id="endDateFilter" class="date-input" onchange="app.renderTransactions()">
-                </div>
-            </div>
-
+            <!-- TABELLA TRANSAZIONI CON FILTRI ED INTESTAZIONI ORDINABILI -->
             <div class="card table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Data</th>
-                            <th>Importo</th>
-                            <th>Categoria</th>
-                            <th>Titolo</th>
-                            <th>Nota</th>
-                            <th>Account</th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'id')">ID <span id="sort_tx_id" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'date_str')">Data <span id="sort_tx_date_str" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'amount')">Importo <span id="sort_tx_amount" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'category')">Categoria <span id="sort_tx_category" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'title')">Titolo <span id="sort_tx_title" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'note')">Nota <span id="sort_tx_note" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('tx', 'account')">Account <span id="sort_tx_account" class="sort-icon"></span></th>
                             <th>Azioni</th>
+                        </tr>
+                        <tr class="table-filter-row">
+                            <th><input type="number" id="txF_id" class="table-filter-input" placeholder="ID" oninput="app.renderTransactions()"></th>
+                            <th><input type="date" id="txF_date" class="table-filter-input" onchange="app.renderTransactions()"></th>
+                            <th><input type="number" id="txF_amount" class="table-filter-input" placeholder="€ min" oninput="app.renderTransactions()"></th>
+                            <th><input type="text" id="txF_category" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
+                            <th><input type="text" id="txF_title" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
+                            <th><input type="text" id="txF_note" class="table-filter-input" placeholder="Filtra..." oninput="app.renderTransactions()"></th>
+                            <th><select id="txF_account" class="table-filter-input" onchange="app.renderTransactions()"><option value="">Tutti</option></select></th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody id="transactionsTableBody"></tbody>
@@ -75,19 +68,28 @@
             </div>
         </section>
 
-        <!-- TAB AUDIT LOG -->
+        <!-- TAB AUDIT LOG CON FILTRI INTEGRATI -->
         <section id="auditTab" class="tab-content">
             <div class="card table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>Log ID</th>
-                            <th>Tx ID</th>
-                            <th>Azione</th>
-                            <th>Campo</th>
+                            <th class="sortable" onclick="app.sortTable('audit', 'id')">Log ID <span id="sort_audit_id" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('audit', 'transaction_id')">Tx ID <span id="sort_audit_transaction_id" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('audit', 'action')">Azione <span id="sort_audit_action" class="sort-icon"></span></th>
+                            <th class="sortable" onclick="app.sortTable('audit', 'field_changed')">Campo <span id="sort_audit_field_changed" class="sort-icon"></span></th>
                             <th>Prima</th>
                             <th>Dopo</th>
-                            <th>Data & Ora Modifica</th>
+                            <th class="sortable" onclick="app.sortTable('audit', 'timestamp')">Data e Ora <span id="sort_audit_timestamp" class="sort-icon"></span></th>
+                        </tr>
+                        <tr class="table-filter-row">
+                            <th><input type="number" id="logF_id" class="table-filter-input" placeholder="ID" oninput="app.renderAuditLog()"></th>
+                            <th><input type="number" id="logF_txId" class="table-filter-input" placeholder="Tx ID" oninput="app.renderAuditLog()"></th>
+                            <th><input type="text" id="logF_action" class="table-filter-input" placeholder="Azione" oninput="app.renderAuditLog()"></th>
+                            <th><input type="text" id="logF_field" class="table-filter-input" placeholder="Campo" oninput="app.renderAuditLog()"></th>
+                            <th></th>
+                            <th></th>
+                            <th><input type="date" id="logF_date" class="table-filter-input" onchange="app.renderAuditLog()"></th>
                         </tr>
                     </thead>
                     <tbody id="auditTableBody"></tbody>
@@ -96,10 +98,10 @@
         </section>
     </main>
 
-    <!-- 🌟 PULSANTE FLOTTANTE '+' IN BASSO A DESTRA -->
-    <button class="fab-btn" title="Aggiungi Transazione" onclick="app.addManualTransaction()">+</button>
+    <!-- FAB (+) AGGIUNGI TRANSAZIONE MANUALE -->
+    <button class="fab-btn" title="Aggiungi Transazione" onclick="app.openTransactionModal()">+</button>
 
-    <!-- Barra Flottante in Basso -->
+    <!-- Navigation Flottante Bottom -->
     <nav class="bottom-nav">
         <button class="nav-item active" onclick="app.switchTab('transactionsTab', this)">
             <span>📊</span> Transazioni
@@ -109,16 +111,14 @@
         </button>
     </nav>
 
-    <!-- 🌟 MODALE CARICAMENTO UNIFICATO -->
+    <!-- MODALE CARICAMENTO UNIFICATO -->
     <div id="loadModal" class="modal-overlay">
         <div class="modal-content">
             <h3>📂 Carica File</h3>
-            <p class="text-muted" style="font-size: 0.8rem;">Seleziona i file da importare nel sistema:</p>
+            <p class="text-muted" style="font-size: 0.8rem;">Seleziona file .db, regole (.xlsx) o report bancari (.xlsx):</p>
             <div class="checkbox-group">
-                <label class="checkbox-label">
-                    <input type="file" id="unifiedFileInput" multiple accept=".db,.sqlite,.xlsx" hidden onchange="app.handleUnifiedLoad(event)">
-                    <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('unifiedFileInput').click()">Sfoglia File (.db, .xlsx)</button>
-                </label>
+                <input type="file" id="unifiedFileInput" multiple accept=".db,.sqlite,.xlsx" hidden onchange="app.handleUnifiedLoad(event)">
+                <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('unifiedFileInput').click()">Sfoglia File (.db, .xlsx)</button>
             </div>
             <div id="loadStatus" class="status-log"></div>
             <div class="modal-actions">
@@ -127,7 +127,7 @@
         </div>
     </div>
 
-    <!-- 🌟 MODALE SALVATAGGIO MULTIPLO UNIFICATO -->
+    <!-- MODALE SALVATAGGIO MULTIPLO -->
     <div id="saveModal" class="modal-overlay">
         <div class="modal-content">
             <h3>💾 Esporta e Salva</h3>
@@ -141,6 +141,44 @@
             <div class="modal-actions">
                 <button class="btn btn-outline" onclick="app.closeSaveModal()">Annulla</button>
                 <button class="btn btn-primary" onclick="app.executeSave()">Scarica Selezionati</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE INPUT/EDIT TRANSAZIONE (CON INPUT DATA E NUMERO) -->
+    <div id="txFormModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 id="txModalTitle">Aggiungi Transazione</h3>
+            <input type="hidden" id="txForm_id">
+            
+            <div class="form-group">
+                <label>Data:</label>
+                <input type="date" id="txForm_date" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Importo (€):</label>
+                <input type="number" step="0.01" id="txForm_amount" class="form-control" placeholder="-15.50 o 100">
+            </div>
+            <div class="form-group">
+                <label>Nota / Descrizione:</label>
+                <input type="text" id="txForm_note" class="form-control" placeholder="Es. Spesa Conad" oninput="app.onNoteInputAutoPredict()">
+            </div>
+            <div class="form-group">
+                <label>Categoria:</label>
+                <input type="text" id="txForm_category" class="form-control" placeholder="nc">
+            </div>
+            <div class="form-group">
+                <label>Titolo:</label>
+                <input type="text" id="txForm_title" class="form-control" placeholder="nc">
+            </div>
+            <div class="form-group">
+                <label>Account:</label>
+                <input type="text" id="txForm_account" class="form-control" placeholder="isp, ing, ssp...">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="app.closeTransactionModal()">Annulla</button>
+                <button class="btn btn-primary" onclick="app.saveTransactionFromModal()">Salva</button>
             </div>
         </div>
     </div>
