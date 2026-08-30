@@ -3,7 +3,6 @@ class App {
         this.dbMgr = new DatabaseManager();
         this.labeler = new AutoLabeler();
         
-        // Stato dell'ordinamento
         this.sortState = {
             tx: { col: 'date_str', dir: 'desc' },
             audit: { col: 'id', dir: 'desc' }
@@ -24,7 +23,34 @@ class App {
         btn.classList.add('active');
     }
 
-    /* 📂 CARICAMENTO FILE (CORRETTA SEQUENZIALITÀ) */
+    /* ⚙️ GESTIONE MODALE IMPOSTAZIONI */
+    openSettingsModal() { document.getElementById('settingsModal').classList.add('active'); }
+    closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
+
+    async handleConfigLoad(e) {
+        const files = Array.from(e.target.files);
+        const statusDiv = document.getElementById('configStatus');
+        statusDiv.innerHTML = "";
+
+        for (let file of files) {
+            const fn = file.name.toLowerCase();
+            const buffer = await file.arrayBuffer();
+
+            if (fn.includes('sus')) {
+                const wb = XLSX.read(buffer, { type: 'array' });
+                this.labeler.loadSusFromWorkbook(wb);
+                statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${file.name}</strong> caricate!</div>`;
+            } else if (fn.includes('sources')) {
+                const wb = XLSX.read(buffer, { type: 'array' });
+                this.labeler.loadSourcesFromWorkbook(wb);
+                statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${file.name}</strong> caricate!</div>`;
+            } else {
+                statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${file.name}</div>`;
+            }
+        }
+    }
+
+    /* 📂 CARICAMENTO DATI BANCARI / DB */
     openLoadModal() { document.getElementById('loadModal').classList.add('active'); }
     closeLoadModal() { document.getElementById('loadModal').classList.remove('active'); }
 
@@ -33,14 +59,7 @@ class App {
         const statusDiv = document.getElementById('loadStatus');
         statusDiv.innerHTML = "<em>Elaborazione file...</em><br>";
 
-        // 1. Ordina i file per elaborare prima le regole (sus/sources) o il DB, poi i report bancari
-        files.sort((a, b) => {
-            const fnA = a.name.toLowerCase();
-            const fnB = b.name.toLowerCase();
-            if (fnA.endsWith('.db') || fnA.includes('sus') || fnA.includes('sources')) return -1;
-            if (fnB.endsWith('.db') || fnB.includes('sus') || fnB.includes('sources')) return 1;
-            return 0;
-        });
+        files.sort((a, b) => (a.name.toLowerCase().endsWith('.db') ? -1 : 1));
 
         for (let file of files) {
             const fn = file.name.toLowerCase();
@@ -49,22 +68,13 @@ class App {
             if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
                 this.dbMgr.loadBinary(buffer);
                 statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
-            } else if (fn.includes('sus')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSusFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole SUS caricate da <strong>${file.name}</strong>.</div>`;
-            } else if (fn.includes('sources')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSourcesFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Sorgenti caricate da <strong>${file.name}</strong>.</div>`;
             } else if (fn.endsWith('.xlsx')) {
-                // Parse report bancario con labeler aggiornato
                 const records = BankParser.parseExcel(buffer, file.name, this.labeler);
                 if (records.length > 0) {
                     const count = this.dbMgr.insertTransactions(records);
                     statusDiv.innerHTML += `<div>✅ Bank Excel <strong>${file.name}</strong>: ${count} nuove transazioni!</div>`;
                 } else {
-                    statusDiv.innerHTML += `<div>⚠️ Nessuna transazione trovata in <strong>${file.name}</strong>.</div>`;
+                    statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${file.name}</strong>.</div>`;
                 }
             }
         }
@@ -72,7 +82,7 @@ class App {
         this.renderAuditLog();
     }
 
-    /* 💾 ESPORTAZIONE CON DOWNLOAD MULTIPLI ABILITATI */
+    /* 💾 ESPORTAZIONE CON DOWNLOAD MULTIPLI */
     openSaveModal() { document.getElementById('saveModal').classList.add('active'); }
     closeSaveModal() { document.getElementById('saveModal').classList.remove('active'); }
 
@@ -87,12 +97,8 @@ class App {
                 Exporter.downloadBlob(blob, 'money.db');
             });
         }
-        if (document.getElementById('chkXlsx').checked) {
-            downloads.push(() => Exporter.exportXLSX(txs));
-        }
-        if (document.getElementById('chkCsv').checked) {
-            downloads.push(() => Exporter.exportCSV(txs));
-        }
+        if (document.getElementById('chkXlsx').checked) downloads.push(() => Exporter.exportXLSX(txs));
+        if (document.getElementById('chkCsv').checked) downloads.push(() => Exporter.exportCSV(txs));
         if (document.getElementById('chkAudit').checked) {
             downloads.push(() => {
                 const csvHeader = "Log ID,Tx ID,Azione,Campo,Vecchio Valore,Nuovo Valore,Timestamp\n";
@@ -102,12 +108,25 @@ class App {
             });
         }
 
-        // Esegue i download sequenzialmente con breve ritardo per prevenire blocchi browser
-        downloads.forEach((dlFn, index) => {
-            setTimeout(dlFn, index * 350);
-        });
-
+        downloads.forEach((dlFn, index) => setTimeout(dlFn, index * 350));
         this.closeSaveModal();
+    }
+
+    /* 🔍 HELPER FILTRAGGIO TESTUALE (INCLUDI / ESCLUDI) */
+    matchTextFilter(value, filterInput) {
+        if (!filterInput || !filterInput.trim()) return true;
+        const valStr = String(value || '').toLowerCase();
+        const tokens = filterInput.trim().toLowerCase().split(/\s+/);
+
+        for (let token of tokens) {
+            if (token.startsWith('!')) {
+                const excludeTerm = token.substring(1);
+                if (excludeTerm && valStr.includes(excludeTerm)) return false;
+            } else {
+                if (!valStr.includes(token)) return false;
+            }
+        }
+        return true;
     }
 
     /* 📊 ORDINAMENTO TABELLE */
@@ -132,13 +151,13 @@ class App {
         if (iconEl) iconEl.textContent = current.dir === 'asc' ? ' ▲' : ' ▼';
     }
 
-    /* 📝 TRANSAZIONI: RENDERING E FILTRI INTESTAZIONE */
+    /* 📝 TRANSAZIONI: RENDERING E FILTRI AVANZATI */
     renderTransactions() {
         const tbody = document.getElementById('transactionsTableBody');
         tbody.innerHTML = '';
         let txs = this.dbMgr.getActiveTransactions();
 
-        // Aggiorna opzioni Account nel filtro intestazione
+        // Popola select Account
         const accounts = [...new Set(txs.map(t => t.account))];
         const accSelect = document.getElementById('txF_account');
         const currentAcc = accSelect.value;
@@ -147,40 +166,45 @@ class App {
             accSelect.innerHTML += `<option value="${a}" ${a === currentAcc ? 'selected' : ''}>${a.toUpperCase()}</option>`;
         });
 
-        // Leggi filtri da intestazione
-        const fId = document.getElementById('txF_id').value;
-        const fDate = document.getElementById('txF_date').value;
-        const fAmount = document.getElementById('txF_amount').value;
-        const fCat = document.getElementById('txF_category').value.toLowerCase();
-        const fTitle = document.getElementById('txF_title').value.toLowerCase();
-        const fNote = document.getElementById('txF_note').value.toLowerCase();
+        // Lettura filtri
+        const idMin = document.getElementById('txF_id_min').value;
+        const idMax = document.getElementById('txF_id_max').value;
+        const dateStart = document.getElementById('txF_date_start').value;
+        const dateEnd = document.getElementById('txF_date_end').value;
+        const amtMin = document.getElementById('txF_amt_min').value;
+        const amtMax = document.getElementById('txF_amt_max').value;
+        const fCat = document.getElementById('txF_category').value;
+        const fTitle = document.getElementById('txF_title').value;
+        const fNote = document.getElementById('txF_note').value;
         const fAcc = document.getElementById('txF_account').value;
 
         // Applicazione Filtri
         txs = txs.filter(t => {
-            if (fId && t.id != fId) return false;
-            if (fDate && t.date_str !== fDate) return false;
-            if (fAmount && Math.abs(t.amount) < parseFloat(fAmount)) return false;
-            if (fCat && !t.category.toLowerCase().includes(fCat)) return false;
-            if (fTitle && !t.title.toLowerCase().includes(fTitle)) return false;
-            if (fNote && !t.note.toLowerCase().includes(fNote)) return false;
+            if (idMin && t.id < parseInt(idMin)) return false;
+            if (idMax && t.id > parseInt(idMax)) return false;
+            if (dateStart && t.date_str < dateStart) return false;
+            if (dateEnd && t.date_str > dateEnd) return false;
+            if (amtMin && t.amount < parseFloat(amtMin)) return false;
+            if (amtMax && t.amount > parseFloat(amtMax)) return false;
+            if (!this.matchTextFilter(t.category, fCat)) return false;
+            if (!this.matchTextFilter(t.title, fTitle)) return false;
+            if (!this.matchTextFilter(t.note, fNote)) return false;
             if (fAcc && t.account !== fAcc) return false;
             return true;
         });
 
-        // Applicazione Ordinamento (Sorting)
+        // Ordinamento
         const { col, dir } = this.sortState.tx;
         txs.sort((a, b) => {
             let valA = a[col], valB = b[col];
             if (typeof valA === 'string') valA = valA.toLowerCase();
             if (typeof valB === 'string') valB = valB.toLowerCase();
-            
             if (valA < valB) return dir === 'asc' ? -1 : 1;
             if (valA > valB) return dir === 'asc' ? 1 : -1;
             return 0;
         });
 
-        // Calcolo Totali ed Emissione HTML
+        // Rendering HTML
         let inc = 0, exp = 0;
         txs.forEach(t => {
             if (t.amount > 0) inc += t.amount;
@@ -208,24 +232,30 @@ class App {
         document.getElementById('totalExpense').textContent = `€ ${exp.toFixed(2)}`;
     }
 
-    /* 📋 AUDIT LOG: RENDERING E FILTRI INTESTAZIONE */
+    /* 📋 AUDIT LOG: RENDERING E FILTRI AVANZATI */
     renderAuditLog() {
         const tbody = document.getElementById('auditTableBody');
         tbody.innerHTML = '';
         let logs = this.dbMgr.getAuditLog();
 
-        const fId = document.getElementById('logF_id').value;
-        const fTxId = document.getElementById('logF_txId').value;
-        const fAction = document.getElementById('logF_action').value.toLowerCase();
-        const fField = document.getElementById('logF_field').value.toLowerCase();
-        const fDate = document.getElementById('logF_date').value;
+        const idMin = document.getElementById('logF_id_min').value;
+        const idMax = document.getElementById('logF_id_max').value;
+        const txIdMin = document.getElementById('logF_txId_min').value;
+        const txIdMax = document.getElementById('logF_txId_max').value;
+        const fAction = document.getElementById('logF_action').value;
+        const fField = document.getElementById('logF_field').value;
+        const dateStart = document.getElementById('logF_date_start').value;
+        const dateEnd = document.getElementById('logF_date_end').value;
 
         logs = logs.filter(l => {
-            if (fId && l.id != fId) return false;
-            if (fTxId && l.transaction_id != fTxId) return false;
-            if (fAction && !l.action.toLowerCase().includes(fAction)) return false;
-            if (fField && !(l.field_changed || '').toLowerCase().includes(fField)) return false;
-            if (fDate && !l.timestamp.startsWith(fDate)) return false;
+            if (idMin && l.id < parseInt(idMin)) return false;
+            if (idMax && l.id > parseInt(idMax)) return false;
+            if (txIdMin && l.transaction_id < parseInt(txIdMin)) return false;
+            if (txIdMax && l.transaction_id > parseInt(txIdMax)) return false;
+            if (!this.matchTextFilter(l.action, fAction)) return false;
+            if (!this.matchTextFilter(l.field_changed, fField)) return false;
+            if (dateStart && l.timestamp.split(' ')[0] < dateStart) return false;
+            if (dateEnd && l.timestamp.split(' ')[0] > dateEnd) return false;
             return true;
         });
 
@@ -252,7 +282,7 @@ class App {
         });
     }
 
-    /* ✏️ MODALE DI AGGIUNTA / MODIFICA TRANSAZIONI CON INPUT NATIVI */
+    /* ✏️ MODALE AGGIUNGI / MODIFICA TRANSAZIONE */
     openTransactionModal(txId = null) {
         const modal = document.getElementById('txFormModal');
         const titleEl = document.getElementById('txModalTitle');
@@ -288,7 +318,7 @@ class App {
 
     onNoteInputAutoPredict() {
         const isNew = !document.getElementById('txForm_id').value;
-        if (!isNew) return; // Autosuggestion solo su nuovi inserimenti
+        if (!isNew) return;
 
         const note = document.getElementById('txForm_note').value;
         const amt = parseFloat(document.getElementById('txForm_amount').value) || 0;
