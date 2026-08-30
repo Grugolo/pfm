@@ -141,3 +141,10 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
   gap: 16px;
   align-items: center;
 }
+
+.filter-stacked-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
