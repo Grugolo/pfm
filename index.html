@@ -3,21 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Personal Finance Hub</title>
+    <title>Finance Control Hub</title>
     <link rel="stylesheet" href="css/style.css">
 
-    <!-- External Libraries (CDN per GitHub Pages) -->
-    <!-- sql.js for SQLite in WebAssembly -->
+    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
-    <!-- SheetJS for Excel Parsing and Export -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
     <header class="navbar">
-        <h1>💰 Personal Finance Hub</h1>
+        <h1>💳 Personal Finance</h1>
         <div class="db-actions">
-            <button class="btn btn-secondary" onclick="app.downloadDatabase()">💾 Salva DB (.db)</button>
+            <button class="btn btn-outline" onclick="app.downloadDatabase()">💾 Salva DB</button>
             <label class="btn btn-outline">
                 📂 Carica DB
                 <input type="file" id="dbFileInput" accept=".db,.sqlite" onchange="app.uploadDatabase(event)" hidden>
@@ -26,73 +24,60 @@
     </header>
 
     <main class="container">
-        <!-- TAB NAVIGATION -->
-        <nav class="tabs">
-            <button class="tab-btn active" onclick="app.switchTab('importTab', this)">📥 Importazione</button>
-            <button class="tab-btn" onclick="app.switchTab('transactionsTab', this)">📊 Transazioni</button>
-            <button class="tab-btn" onclick="app.switchTab('auditTab', this)">📋 Audit Log</button>
-        </nav>
-
-        <!-- TAB 1: IMPORTAZIONE & CONFIGURAZIONE -->
+        <!-- TAB 1: IMPORTAZIONE -->
         <section id="importTab" class="tab-content active">
             <div class="grid-2">
-                <!-- Dropzone Configurazione -->
                 <div class="card">
-                    <h2>1. Configurazione (`sus.xlsx` & `sources.xlsx`)</h2>
-                    <p class="text-muted">Carica o aggiorna le regole di labeling e la mappatura dei conti.</p>
-                    <div class="dropzone" id="configDropzone">
-                        <p>Trascina qui <strong>sus.xlsx</strong> e <strong>sources.xlsx</strong></p>
+                    <h3>1. Regole (`sus.xlsx` / `sources.xlsx`)</h3>
+                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica i file di configurazione per il categorizzatore e le banche.</p>
+                    <div class="dropzone">
+                        <p>Seleziona o trascina i file di configurazione</p>
                         <input type="file" id="configFileInput" multiple accept=".xlsx" hidden>
-                        <button class="btn btn-primary" onclick="document.getElementById('configFileInput').click()">Seleziona File</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('configFileInput').click()">Sfoglia File</button>
                     </div>
-                    <div id="configStatus" class="status-list"></div>
+                    <div id="configStatus" class="status-log"></div>
                 </div>
 
-                <!-- Dropzone Estratti Conto -->
                 <div class="card">
-                    <h2>2. Importa Estratti Conto Banca (.xlsx)</h2>
-                    <p class="text-muted">Carica uno o più file `.xlsx` esportati dalle tue banche.</p>
-                    <div class="dropzone" id="bankDropzone">
-                        <p>Trascina qui gli estratti conto <strong>.xlsx</strong></p>
+                    <h3>2. Estratti Conto Banche (.xlsx)</h3>
+                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica gli estratti conto (ING, Satispay, Intesa, ecc.).</p>
+                    <div class="dropzone">
+                        <p>Seleziona i file delle transazioni</p>
                         <input type="file" id="bankFileInput" multiple accept=".xlsx" hidden>
-                        <button class="btn btn-primary" onclick="document.getElementById('bankFileInput').click()">Seleziona File</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('bankFileInput').click()">Sfoglia File</button>
                     </div>
-                    <div id="importStatus" class="status-list"></div>
+                    <div id="importStatus" class="status-log"></div>
                 </div>
             </div>
         </section>
 
-        <!-- TAB 2: TRANSAZIONI & ESPORTAZIONE -->
+        <!-- TAB 2: TRANSAZIONI -->
         <section id="transactionsTab" class="tab-content">
-            <div class="summary-cards">
-                <div class="card stat-card">
-                    <span class="stat-title">Transazioni Attive</span>
+            <div class="summary-cards card">
+                <div class="stat-card">
+                    <span class="stat-title">N° Tx</span>
                     <span class="stat-value" id="totalTxCount">0</span>
                 </div>
-                <div class="card stat-card">
-                    <span class="stat-title">Totale Entrate</span>
+                <div class="stat-card">
+                    <span class="stat-title">Entrate</span>
                     <span class="stat-value amount-income" id="totalIncome">€ 0.00</span>
                 </div>
-                <div class="card stat-card">
-                    <span class="stat-title">Totale Uscite</span>
+                <div class="stat-card">
+                    <span class="stat-title">Uscite</span>
                     <span class="stat-value amount-expense" id="totalExpense">€ 0.00</span>
                 </div>
             </div>
 
             <div class="toolbar">
-                <div class="filters">
-                    <input type="text" id="searchInput" placeholder="Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
-                    <select id="accountFilter" onchange="app.renderTransactions()">
-                        <option value="">Tutti gli Account</option>
-                    </select>
-                </div>
-                <div class="export-actions">
-                    <button class="btn btn-success" onclick="app.exportCSV()">📄 Esporta CSV (Cashew)</button>
-                    <button class="btn btn-primary" onclick="app.exportXLSX()">📊 Esporta XLSX</button>
-                </div>
+                <input type="text" id="searchInput" class="search-input" placeholder="🔍 Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
+                <select id="accountFilter" class="select-input" onchange="app.renderTransactions()">
+                    <option value="">Tutti i Conti</option>
+                </select>
+                <button class="btn btn-outline" onclick="app.exportCSV()">📄 CSV</button>
+                <button class="btn btn-primary" onclick="app.exportXLSX()">📊 Excel</button>
             </div>
 
-            <div class="table-container card">
+            <div class="card table-container">
                 <table>
                     <thead>
                         <tr>
@@ -103,7 +88,6 @@
                             <th>Titolo</th>
                             <th>Nota</th>
                             <th>Account</th>
-                            <th>Stato</th>
                             <th>Azioni</th>
                         </tr>
                     </thead>
@@ -114,17 +98,17 @@
 
         <!-- TAB 3: AUDIT LOG -->
         <section id="auditTab" class="tab-content">
-            <div class="table-container card">
+            <div class="card table-container">
                 <table>
                     <thead>
                         <tr>
                             <th>Log ID</th>
                             <th>Tx ID</th>
                             <th>Azione</th>
-                            <th>Campo Modificato</th>
-                            <th>Valore Precedente</th>
-                            <th>Nuovo Valore</th>
-                            <th>Timestamp</th>
+                            <th>Campo</th>
+                            <th>Prima</th>
+                            <th>Dopo</th>
+                            <th>Data & Ora Modifica</th>
                         </tr>
                     </thead>
                     <tbody id="auditTableBody"></tbody>
@@ -133,7 +117,20 @@
         </section>
     </main>
 
-    <!-- App Logic Modules -->
+    <!-- 🌟 NAVBAR FLOTTANTE IN BASSO -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" onclick="app.switchTab('importTab', this)">
+            <span>📥</span> Importa
+        </button>
+        <button class="nav-item" onclick="app.switchTab('transactionsTab', this)">
+            <span>📊</span> Transazioni
+        </button>
+        <button class="nav-item" onclick="app.switchTab('auditTab', this)">
+            <span>📋</span> Audit Log
+        </button>
+    </nav>
+
+    <!-- JS Modules -->
     <script src="js/db.js"></script>
     <script src="js/labeler.js"></script>
     <script src="js/parser.js"></script>
@@ -141,4 +138,3 @@
     <script src="js/app.js"></script>
 </body>
 </html>
-
