@@ -13,7 +13,8 @@ class App {
 
     switchTab(tabId, btn) {
         document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        
         document.getElementById(tabId).classList.add('active');
         btn.classList.add('active');
     }
@@ -52,20 +53,45 @@ class App {
         this.renderAuditLog();
     }
 
+    // Popola dinamicamente il selettore degli account
+    populateAccountSelect(accounts) {
+        const select = document.getElementById('accountFilter');
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">Tutti i Conti</option>';
+        accounts.forEach(acc => {
+            const opt = document.createElement('option');
+            opt.value = acc;
+            opt.textContent = acc.toUpperCase();
+            if (acc === currentVal) opt.selected = true;
+            select.appendChild(opt);
+        });
+    }
+
     renderTransactions() {
         const tbody = document.getElementById('transactionsTableBody');
         const search = document.getElementById('searchInput').value.toLowerCase();
         const accFilter = document.getElementById('accountFilter').value;
+        const startDate = document.getElementById('startDateFilter').value;
+        const endDate = document.getElementById('endDateFilter').value;
 
         tbody.innerHTML = '';
         const txs = this.dbMgr.getActiveTransactions();
 
+        // Estrazione di tutti gli account presenti per popolare la tendina del filtro
+        const uniqueAccounts = [...new Set(txs.map(t => t.account))];
+        this.populateAccountSelect(uniqueAccounts);
+
         let inc = 0, exp = 0, count = 0;
 
         txs.filter(t => {
-            const matchSearch = t.note.toLowerCase().includes(search) || t.title.toLowerCase().includes(search) || t.category.toLowerCase().includes(search);
+            const matchSearch = t.note.toLowerCase().includes(search) || 
+                                t.title.toLowerCase().includes(search) || 
+                                t.category.toLowerCase().includes(search);
             const matchAcc = !accFilter || t.account === accFilter;
-            return matchSearch && matchAcc;
+            const matchStart = !startDate || t.date_str >= startDate;
+            const matchEnd = !endDate || t.date_str <= endDate;
+
+            return matchSearch && matchAcc && matchStart && matchEnd;
         }).forEach(t => {
             count++;
             if (t.amount > 0) inc += t.amount;
@@ -79,11 +105,10 @@ class App {
                 <td><span class="badge">${t.category}</span></td>
                 <td>${t.title}</td>
                 <td>${t.note}</td>
-                <td><strong>${t.account.toUpperCase()}</strong></td>
-                <td><span class="badge badge-status ${t.status}">${t.status}</span></td>
-                <td>
-                    <button class="btn btn-secondary-sm" onclick="app.editTx(${t.id})">✏️ Modifica</button>
-                    <button class="btn btn-danger-sm" onclick="app.deleteTx(${t.id})">🗑️</button>
+                <td><strong style="color:var(--primary);">${t.account.toUpperCase()}</strong></td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-edit-sm" title="Modifica" onclick="app.editTx(${t.id})">✏️</button>
+                    <button class="btn btn-danger-sm" title="Elimina" onclick="app.deleteTx(${t.id})">🗑️</button>
                 </td>
             `;
             tbody.appendChild(tr);
