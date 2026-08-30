@@ -7,10 +7,13 @@ class App {
             tx: { col: 'date_str', dir: 'desc' },
             audit: { col: 'id', dir: 'desc' }
         };
+
+        this.STORAGE_KEY_FILTERS = 'finance_app_filters_v1';
     }
 
     async init() {
         await this.dbMgr.init();
+        this.loadFiltersFromStorage(); // Ripristina i filtri salvati
         this.renderTransactions();
         this.renderAuditLog();
     }
@@ -112,20 +115,63 @@ class App {
         this.closeSaveModal();
     }
 
-    /* 🔍 HELPER FILTRAGGIO TESTUALE (INCLUDI / ESCLUDI) */
-    matchTextFilter(value, filterInput) {
-        if (!filterInput || !filterInput.trim()) return true;
-        const valStr = String(value || '').toLowerCase();
-        const tokens = filterInput.trim().toLowerCase().split(/\s+/);
+    /* 💾 PERSISTENZA FILTRI SU LOCALSTORAGE */
+    saveFiltersToStorage() {
+        const filterIds = [
+            'txF_id_min', 'txF_id_max', 'txF_date_start', 'txF_date_end', 
+            'txF_amt_min', 'txF_amt_max', 'txF_category_inc', 'txF_category_exc',
+            'txF_title_inc', 'txF_title_exc', 'txF_note_inc', 'txF_note_exc', 'txF_account',
+            'logF_id_min', 'logF_id_max', 'logF_txId_min', 'logF_txId_max',
+            'logF_action_inc', 'logF_action_exc', 'logF_field_inc', 'logF_field_exc',
+            'logF_date_start', 'logF_date_end'
+        ];
 
-        for (let token of tokens) {
-            if (token.startsWith('!')) {
-                const excludeTerm = token.substring(1);
-                if (excludeTerm && valStr.includes(excludeTerm)) return false;
-            } else {
-                if (!valStr.includes(token)) return false;
+        const filterData = {};
+        filterIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) filterData[id] = el.value;
+        });
+
+        try {
+            localStorage.setItem(this.STORAGE_KEY_FILTERS, JSON.stringify(filterData));
+        } catch (e) {
+            console.error("Errore nel salvataggio dei filtri:", e);
+        }
+    }
+
+    loadFiltersFromStorage() {
+        try {
+            const saved = localStorage.getItem(this.STORAGE_KEY_FILTERS);
+            if (!saved) return;
+            const filterData = JSON.parse(saved);
+
+            Object.keys(filterData).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = filterData[id];
+            });
+        } catch (e) {
+            console.error("Errore nel caricamento dei filtri:", e);
+        }
+    }
+
+    /* 🔍 HELPER FILTRAGGIO TESTUALE CON DOPPIO CAMPO (INCLUDI / ESCLUDI) */
+    matchTextFilterIncludeExclude(value, incTerm, excTerm) {
+        const valStr = String(value || '').toLowerCase();
+
+        if (incTerm && incTerm.trim()) {
+            const terms = incTerm.trim().toLowerCase().split(/\s+/);
+            for (let t of terms) {
+                if (!valStr.includes(t)) return false;
             }
         }
+
+        if (excTerm && excTerm.trim()) {
+            const terms = excTerm.trim().toLowerCase().split(/\s+/);
+            for (let t of terms) {
+                if (valStr.includes(t)) return false;
+            }
+        }
+
         return true;
     }
 
@@ -153,6 +199,8 @@ class App {
 
     /* 📝 TRANSAZIONI: RENDERING E FILTRI AVANZATI */
     renderTransactions() {
+        this.saveFiltersToStorage(); // Salva lo stato dei filtri
+
         const tbody = document.getElementById('transactionsTableBody');
         tbody.innerHTML = '';
         let txs = this.dbMgr.getActiveTransactions();
@@ -173,9 +221,14 @@ class App {
         const dateEnd = document.getElementById('txF_date_end').value;
         const amtMin = document.getElementById('txF_amt_min').value;
         const amtMax = document.getElementById('txF_amt_max').value;
-        const fCat = document.getElementById('txF_category').value;
-        const fTitle = document.getElementById('txF_title').value;
-        const fNote = document.getElementById('txF_note').value;
+        
+        const fCatInc = document.getElementById('txF_category_inc').value;
+        const fCatExc = document.getElementById('txF_category_exc').value;
+        const fTitleInc = document.getElementById('txF_title_inc').value;
+        const fTitleExc = document.getElementById('txF_title_exc').value;
+        const fNoteInc = document.getElementById('txF_note_inc').value;
+        const fNoteExc = document.getElementById('txF_note_exc').value;
+        
         const fAcc = document.getElementById('txF_account').value;
 
         // Applicazione Filtri
@@ -186,9 +239,9 @@ class App {
             if (dateEnd && t.date_str > dateEnd) return false;
             if (amtMin && t.amount < parseFloat(amtMin)) return false;
             if (amtMax && t.amount > parseFloat(amtMax)) return false;
-            if (!this.matchTextFilter(t.category, fCat)) return false;
-            if (!this.matchTextFilter(t.title, fTitle)) return false;
-            if (!this.matchTextFilter(t.note, fNote)) return false;
+            if (!this.matchTextFilterIncludeExclude(t.category, fCatInc, fCatExc)) return false;
+            if (!this.matchTextFilterIncludeExclude(t.title, fTitleInc, fTitleExc)) return false;
+            if (!this.matchTextFilterIncludeExclude(t.note, fNoteInc, fNoteExc)) return false;
             if (fAcc && t.account !== fAcc) return false;
             return true;
         });
@@ -234,6 +287,8 @@ class App {
 
     /* 📋 AUDIT LOG: RENDERING E FILTRI AVANZATI */
     renderAuditLog() {
+        this.saveFiltersToStorage(); // Salva lo stato dei filtri
+
         const tbody = document.getElementById('auditTableBody');
         tbody.innerHTML = '';
         let logs = this.dbMgr.getAuditLog();
@@ -242,8 +297,12 @@ class App {
         const idMax = document.getElementById('logF_id_max').value;
         const txIdMin = document.getElementById('logF_txId_min').value;
         const txIdMax = document.getElementById('logF_txId_max').value;
-        const fAction = document.getElementById('logF_action').value;
-        const fField = document.getElementById('logF_field').value;
+        
+        const fActionInc = document.getElementById('logF_action_inc').value;
+        const fActionExc = document.getElementById('logF_action_exc').value;
+        const fFieldInc = document.getElementById('logF_field_inc').value;
+        const fFieldExc = document.getElementById('logF_field_exc').value;
+        
         const dateStart = document.getElementById('logF_date_start').value;
         const dateEnd = document.getElementById('logF_date_end').value;
 
@@ -252,8 +311,8 @@ class App {
             if (idMax && l.id > parseInt(idMax)) return false;
             if (txIdMin && l.transaction_id < parseInt(txIdMin)) return false;
             if (txIdMax && l.transaction_id > parseInt(txIdMax)) return false;
-            if (!this.matchTextFilter(l.action, fAction)) return false;
-            if (!this.matchTextFilter(l.field_changed, fField)) return false;
+            if (!this.matchTextFilterIncludeExclude(l.action, fActionInc, fActionExc)) return false;
+            if (!this.matchTextFilterIncludeExclude(l.field_changed, fFieldInc, fFieldExc)) return false;
             if (dateStart && l.timestamp.split(' ')[0] < dateStart) return false;
             if (dateEnd && l.timestamp.split(' ')[0] > dateEnd) return false;
             return true;
