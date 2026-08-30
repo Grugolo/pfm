@@ -14,49 +14,20 @@
 
     <header class="navbar">
         <h1>💳 Personal Finance</h1>
-        <div class="db-actions">
-            <button class="btn btn-outline" onclick="app.downloadDatabase()">💾 Salva DB</button>
-            <label class="btn btn-outline">
-                📂 Carica DB
-                <input type="file" id="dbFileInput" accept=".db,.sqlite" onchange="app.uploadDatabase(event)" hidden>
-            </label>
+        <div class="header-actions">
+            <!-- 🌟 PULSANTI UNIFICATI CARICA E SALVA -->
+            <button class="btn btn-outline" onclick="app.openLoadModal()">📂 Carica</button>
+            <button class="btn btn-primary" onclick="app.openSaveModal()">💾 Salva</button>
         </div>
     </header>
 
     <main class="container">
-        <!-- TAB 1: IMPORTAZIONE -->
-        <section id="importTab" class="tab-content active">
-            <div class="grid-2">
-                <div class="card">
-                    <h3>1. Regole (`sus.xlsx` / `sources.xlsx`)</h3>
-                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica i file di configurazione per il labeling e la mappatura conti.</p>
-                    <div class="dropzone">
-                        <p>Seleziona o trascina i file di configurazione</p>
-                        <input type="file" id="configFileInput" multiple accept=".xlsx" hidden>
-                        <button class="btn btn-primary" onclick="document.getElementById('configFileInput').click()">Sfoglia File</button>
-                    </div>
-                    <div id="configStatus" class="status-log"></div>
-                </div>
-
-                <div class="card">
-                    <h3>2. Estratti Conto Banche (.xlsx)</h3>
-                    <p class="text-muted" style="font-size:0.8rem; margin-top:4px;">Carica gli estratti conto (ING, Satispay, Intesa, ecc.).</p>
-                    <div class="dropzone">
-                        <p>Seleziona i file delle transazioni</p>
-                        <input type="file" id="bankFileInput" multiple accept=".xlsx" hidden>
-                        <button class="btn btn-primary" onclick="document.getElementById('bankFileInput').click()">Sfoglia File</button>
-                    </div>
-                    <div id="importStatus" class="status-log"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- TAB 2: TRANSAZIONI -->
-        <section id="transactionsTab" class="tab-content">
-            <!-- Summary Card: Titoli sopra, Numeri sotto -->
+        <!-- TAB TRANSAZIONI -->
+        <section id="transactionsTab" class="tab-content active">
+            <!-- Summary Card: Font reattivo con clamp() -->
             <div class="summary-cards card">
                 <div class="stat-card">
-                    <span class="stat-title">N° Tx</span>
+                    <span class="stat-title">N° Trx</span>
                     <span class="stat-value" id="totalTxCount">0</span>
                 </div>
                 <div class="stat-card">
@@ -69,7 +40,7 @@
                 </div>
             </div>
 
-            <!-- Toolbar con Cerca, Filtro Account, Filtro Date ed Export -->
+            <!-- Toolbar con Filtri -->
             <div class="toolbar card">
                 <div class="filter-row">
                     <input type="text" id="searchInput" class="search-input" placeholder="🔍 Cerca nota, titolo o categoria..." oninput="app.renderTransactions()">
@@ -82,9 +53,6 @@
                     <input type="date" id="startDateFilter" class="date-input" onchange="app.renderTransactions()">
                     <span class="date-label">A:</span>
                     <input type="date" id="endDateFilter" class="date-input" onchange="app.renderTransactions()">
-                    
-                    <button class="btn btn-outline" onclick="app.exportCSV()" style="margin-left: auto;">📄 CSV</button>
-                    <button class="btn btn-excel" onclick="app.exportXLSX()">📊 Excel</button>
                 </div>
             </div>
 
@@ -107,7 +75,7 @@
             </div>
         </section>
 
-        <!-- TAB 3: AUDIT LOG -->
+        <!-- TAB AUDIT LOG -->
         <section id="auditTab" class="tab-content">
             <div class="card table-container">
                 <table>
@@ -128,18 +96,54 @@
         </section>
     </main>
 
+    <!-- 🌟 PULSANTE FLOTTANTE '+' IN BASSO A DESTRA -->
+    <button class="fab-btn" title="Aggiungi Transazione" onclick="app.addManualTransaction()">+</button>
+
     <!-- Barra Flottante in Basso -->
     <nav class="bottom-nav">
-        <button class="nav-item active" onclick="app.switchTab('importTab', this)">
-            <span>📥</span> Importa
-        </button>
-        <button class="nav-item" onclick="app.switchTab('transactionsTab', this)">
+        <button class="nav-item active" onclick="app.switchTab('transactionsTab', this)">
             <span>📊</span> Transazioni
         </button>
         <button class="nav-item" onclick="app.switchTab('auditTab', this)">
             <span>📋</span> Audit Log
         </button>
     </nav>
+
+    <!-- 🌟 MODALE CARICAMENTO UNIFICATO -->
+    <div id="loadModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>📂 Carica File</h3>
+            <p class="text-muted" style="font-size: 0.8rem;">Seleziona i file da importare nel sistema:</p>
+            <div class="checkbox-group">
+                <label class="checkbox-label">
+                    <input type="file" id="unifiedFileInput" multiple accept=".db,.sqlite,.xlsx" hidden onchange="app.handleUnifiedLoad(event)">
+                    <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('unifiedFileInput').click()">Sfoglia File (.db, .xlsx)</button>
+                </label>
+            </div>
+            <div id="loadStatus" class="status-log"></div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="app.closeLoadModal()">Chiudi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🌟 MODALE SALVATAGGIO MULTIPLO UNIFICATO -->
+    <div id="saveModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>💾 Esporta e Salva</h3>
+            <p class="text-muted" style="font-size: 0.8rem;">Seleziona i file da scaricare contemporaneamente:</p>
+            <div class="checkbox-group">
+                <label class="checkbox-label"><input type="checkbox" id="chkDb" checked> Database SQLite (money.db)</label>
+                <label class="checkbox-label"><input type="checkbox" id="chkXlsx" checked> Transazioni Excel (.xlsx)</label>
+                <label class="checkbox-label"><input type="checkbox" id="chkCsv"> Transazioni CSV (.csv)</label>
+                <label class="checkbox-label"><input type="checkbox" id="chkAudit"> Audit Log CSV (.csv)</label>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="app.closeSaveModal()">Annulla</button>
+                <button class="btn btn-primary" onclick="app.executeSave()">Scarica Selezionati</button>
+            </div>
+        </div>
+    </div>
 
     <!-- JS Modules -->
     <script src="js/db.js"></script>
