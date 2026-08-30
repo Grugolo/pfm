@@ -7,35 +7,47 @@ class BankParser {
         if (!rows || rows.length === 0) return [];
 
         let headerIdx = -1;
-        let dateColIdx = -1, amtColIdx = -1, descColIdx = -1, incColIdx = -1, expColIdx = -1;
+        let dateColIdx = -1, amtColIdx = -1, incColIdx = -1, expColIdx = -1;
+        let descColIndices = [];
 
-        // Scansione flessibile su 30 righe per trovare l'intestazione (compatibile con Satispay)
+        // Scansione flessibile su 30 righe per trovare l'intestazione
         for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i];
             if (!row || !Array.isArray(row)) continue;
 
+            let tempDescCols = [];
+            let foundDate = -1, foundAmt = -1, foundInc = -1, foundExp = -1;
+
             row.forEach((cell, colIdx) => {
+                if (cell === null || cell === undefined) return;
                 const h = String(cell).toUpperCase().trim();
+                if (!h) return;
                 
                 // Date recognition
-                if (h.includes('DATA') || h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP')) {
-                    if (dateColIdx === -1) dateColIdx = colIdx;
+                if (foundDate === -1 && (h.includes('DATA') || h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP'))) {
+                    foundDate = colIdx;
                 }
-                // Amount recognition (Satispay usa Amount, Importo, Value)
-                if (h === 'IMPORTO' || h === 'AMOUNT' || h.includes('IMPORTO (')) {
-                    amtColIdx = colIdx;
+                // Amount recognition
+                if (h === 'IMPORTO' || h === 'AMOUNT' || h.includes('IMPORTO (') || h === 'VALORE') {
+                    foundAmt = colIdx;
                 }
-                if (h.includes('ACCREDITI') || h.includes('ENTRATE') || h.includes('CREDIT')) incColIdx = colIdx;
-                if (h.includes('ADDEBITI') || h.includes('USCITE') || h.includes('DEBIT')) expColIdx = colIdx;
+                if (h.includes('ACCREDITI') || h.includes('ENTRATE') || h.includes('CREDIT')) foundInc = colIdx;
+                if (h.includes('ADDEBITI') || h.includes('USCITE') || h.includes('DEBIT')) foundExp = colIdx;
 
-                // Description recognition (Satispay usa Counterparty, Name, Extra, Descrizione)
-                if (h.includes('CAUSALE') || h.includes('DESCRIZIONE') || h.includes('COUNTERPARTY') || h.includes('NAME') || h.includes('NOME') || h.includes('EXTRA')) {
-                    if (descColIdx === -1) descColIdx = colIdx;
+                // Description recognition (Accorpa più colonne descrittive se presenti)
+                if (h.includes('CAUSALE') || h.includes('DESCRIZIONE') || h.includes('COUNTERPARTY') || 
+                    h.includes('NAME') || h.includes('NOME') || h.includes('EXTRA') || h.includes('SUBJECT') || h.includes('NOTE')) {
+                    tempDescCols.push(colIdx);
                 }
             });
 
-            if (dateColIdx !== -1 && (amtColIdx !== -1 || (incColIdx !== -1 || expColIdx !== -1))) {
+            if (foundDate !== -1 && (foundAmt !== -1 || (foundInc !== -1 || foundExp !== -1))) {
                 headerIdx = i;
+                dateColIdx = foundDate;
+                amtColIdx = foundAmt;
+                incColIdx = foundInc;
+                expColIdx = foundExp;
+                descColIndices = tempDescCols;
                 break;
             }
         }
@@ -47,7 +59,7 @@ class BankParser {
 
         for (let i = headerIdx + 1; i < rows.length; i++) {
             const row = rows[i];
-            if (!row || !row[dateColIdx]) continue;
+            if (!row || row[dateColIdx] === undefined || row[dateColIdx] === null) continue;
 
             const dateStr = BankParser.formatISODate(row[dateColIdx]);
             if (!dateStr) continue;
@@ -63,7 +75,16 @@ class BankParser {
 
             if (amount === 0) continue;
 
-            let note = descColIdx !== -1 && row[descColIdx] ? String(row[descColIdx]).trim() : "";
+            // Unisci il contenuto di tutte le colonne descrittive trovate
+            let noteParts = [];
+            descColIndices.forEach(colIdx => {
+                if (row[colIdx] !== undefined && row[colIdx] !== null) {
+                    const val = String(row[colIdx]).trim();
+                    if (val && !noteParts.includes(val)) noteParts.push(val);
+                }
+            });
+            let note = noteParts.join(' - ');
+
             const predicted = labeler.predict(note, amount);
 
             records.push({
@@ -80,13 +101,18 @@ class BankParser {
 
     static parseAmount(val) {
         if (val === undefined || val === null || val === '') return 0.0;
-        if (typeof val === 'number') return val;
+        if (typeof val === 'number') return isNaN(val) ? 0.0 : val;
 
         let str = String(val).replace(/[^0-9\,\.\-]/g, '').trim();
         if (!str) return 0.0;
 
         if (str.includes(',') && str.includes('.')) {
-            str = str.replace(/\./g, '').replace(',', '.');
+            // Es: "1.234,56" -> "1234.56"
+            if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+                str = str.replace(/\./g, '').replace(',', '.');
+            } else { // Es: "1,234.56" -> "1234.56"
+                str = str.replace(/\,/g, '');
+            }
         } else if (str.includes(',')) {
             str = str.replace(',', '.');
         }
@@ -96,15 +122,46 @@ class BankParser {
 
     static formatISODate(val) {
         if (!val) return null;
-        if (val instanceof Date) return val.toISOString().split('T')[0];
+        if (val instanceof Date) {
+            if (isNaN(val.getTime())) return null;
+            const yyyy = val.getFullYear();
+            const mm = String(val.getMonth() + 1).padStart(2, '0');
+            const dd = String(val.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
 
         const str = String(val).trim();
+        // Gestione formati GG/MM/AAAA o AAAA-MM-GG
         const parts = str.split(/[\/\-\.\s]/);
         if (parts.length >= 3) {
-            if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-            if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            let year, month, day;
+            if (parts[0].length === 4) { // YYYY-MM-DD
+                year = parts[0];
+                month = parts[1].padStart(2, '0');
+                day = parts[2].padStart(2, '0');
+            } else if (parts[2].length === 4) { // DD-MM-YYYY
+                day = parts[0].padStart(2, '0');
+                month = parts[1].padStart(2, '0');
+                year = parts[2];
+            } else if (parts[2].length === 2) { // DD-MM-YY
+                day = parts[0].padStart(2, '0');
+                month = parts[1].padStart(2, '0');
+                year = '20' + parts[2];
+            }
+
+            if (year && month && day) {
+                return `${year}-${month}-${day}`;
+            }
         }
+
         const d = new Date(str);
-        return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+        if (!isNaN(d.getTime())) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        return null;
     }
 }
