@@ -2,8 +2,6 @@ class BankParser {
     static parseExcel(arrayBuffer, fileName, labeler) {
         const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        
-        // Convertiamo il foglio in matrice di celle grezze per la ricerca flessibile dell'header
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
 
         if (!rows || rows.length === 0) return [];
@@ -11,26 +9,34 @@ class BankParser {
         let headerIdx = -1;
         let dateColIdx = -1, amtColIdx = -1, descColIdx = -1, incColIdx = -1, expColIdx = -1;
 
-        // Scansione per trovare la riga d'intestazione corretta
-        for (let i = 0; i < Math.min(rows.length, 25); i++) {
+        // Scansione flessibile su 30 righe per trovare l'intestazione (compatibile con Satispay)
+        for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i];
             if (!row || !Array.isArray(row)) continue;
 
-            const rowStr = row.map(c => String(c).toUpperCase()).join(' ');
+            row.forEach((cell, colIdx) => {
+                const h = String(cell).toUpperCase().trim();
+                
+                // Date recognition
+                if (h.includes('DATA') || h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP')) {
+                    if (dateColIdx === -1) dateColIdx = colIdx;
+                }
+                // Amount recognition (Satispay usa Amount, Importo, Value)
+                if (h === 'IMPORTO' || h === 'AMOUNT' || h.includes('IMPORTO (')) {
+                    amtColIdx = colIdx;
+                }
+                if (h.includes('ACCREDITI') || h.includes('ENTRATE') || h.includes('CREDIT')) incColIdx = colIdx;
+                if (h.includes('ADDEBITI') || h.includes('USCITE') || h.includes('DEBIT')) expColIdx = colIdx;
 
-            if (rowStr.includes('DATA') || rowStr.includes('DATE')) {
+                // Description recognition (Satispay usa Counterparty, Name, Extra, Descrizione)
+                if (h.includes('CAUSALE') || h.includes('DESCRIZIONE') || h.includes('COUNTERPARTY') || h.includes('NAME') || h.includes('NOME') || h.includes('EXTRA')) {
+                    if (descColIdx === -1) descColIdx = colIdx;
+                }
+            });
+
+            if (dateColIdx !== -1 && (amtColIdx !== -1 || (incColIdx !== -1 || expColIdx !== -1))) {
                 headerIdx = i;
-                row.forEach((cell, colIdx) => {
-                    const h = String(cell).toUpperCase().trim();
-                    if (h.includes('DATA') || h.includes('DATE')) dateColIdx = colIdx;
-                    else if (h.includes('IMPORTO') || h.includes('AMOUNT')) amtColIdx = colIdx;
-                    else if (h.includes('ENTRATE') || h.includes('ACCREDITI')) incColIdx = colIdx;
-                    else if (h.includes('USCITE') || h.includes('ADDEBITI')) expColIdx = colIdx;
-                    else if (h.includes('CAUSALE') || h.includes('DESCRIZIONE') || h.includes('DETTAGLI') || h.includes('OPERAZIONE') || h.includes('MOTIVO')) {
-                        if (descColIdx === -1) descColIdx = colIdx;
-                    }
-                });
-                if (dateColIdx !== -1) break;
+                break;
             }
         }
 
@@ -90,15 +96,13 @@ class BankParser {
 
     static formatISODate(val) {
         if (!val) return null;
-        if (val instanceof Date) {
-            return val.toISOString().split('T')[0];
-        }
+        if (val instanceof Date) return val.toISOString().split('T')[0];
+
         const str = String(val).trim();
-        // Gestione dd/mm/yyyy o dd-mm-yyyy
-        const parts = str.split(/[\/\-\.]/);
-        if (parts.length === 3) {
+        const parts = str.split(/[\/\-\.\s]/);
+        if (parts.length >= 3) {
             if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         const d = new Date(str);
         return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
