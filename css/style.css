@@ -127,3 +127,17 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .status-log { margin-top: 10px; font-size: 0.8rem; color: var(--income); max-height: 120px; overflow-y: auto; }
+
+
+
+.filters-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
