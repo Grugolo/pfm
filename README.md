@@ -2,6 +2,8 @@
 Personal Finance Manager
 
 ```
+main
+
 ├── index.html
 ├── css/
 │   └── style.css
