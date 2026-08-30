@@ -3,11 +3,16 @@ class AutoLabeler {
         this.notWords = new Set();
         this.expenseRules = [];
         this.incomeRules = [];
+        this.accountMappings = []; // Regole da sources.xlsx
     }
 
     loadSusFromWorkbook(wb) {
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        this.expenseRules = [];
+        this.incomeRules = [];
+        this.notWords.clear();
 
         rows.slice(1).forEach(r => {
             if (r[0]) this.notWords.add(String(r[0]).trim().toLowerCase());
@@ -29,9 +34,38 @@ class AutoLabeler {
         });
     }
 
+    loadSourcesFromWorkbook(wb) {
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        this.accountMappings = [];
+        rows.slice(1).forEach(r => {
+            if (r[0] && r[1]) {
+                this.accountMappings.push({
+                    keyword: String(r[0]).trim().toLowerCase(),
+                    accountCode: String(r[1]).trim().toLowerCase()
+                });
+            }
+        });
+    }
+
+    detectAccount(fileName) {
+        const fn = fileName.toLowerCase();
+        for (let map of this.accountMappings) {
+            if (fn.includes(map.keyword)) {
+                return map.accountCode;
+            }
+        }
+        // Fallback intelligenti se sources.xlsx non è ancora caricato
+        if (fn.includes("ing")) return "ing";
+        if (fn.includes("satispay") || fn.includes("ssp")) return "ssp";
+        if (fn.includes("prepagata") || fn.includes("cc2")) return "cc2";
+        return "isp"; // default
+    }
+
     cleanText(text) {
         if (!text) return "";
-        const words = text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/);
+        const words = String(text).toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/);
         return words.filter(w => w && !this.notWords.has(w)).join(' ');
     }
 
