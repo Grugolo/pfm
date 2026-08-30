@@ -68,16 +68,15 @@ class AutoLabeler {
         return "isp";
     }
 
-    // Pulisce il testo rimuovendo le `notWords`, mantenendo la struttura esattamente come il codice Python
+    // Pulisce il testo rimuovendo le `notWords` in modo sicuro con Regex Escape
     cleanText(text) {
         if (!text) return "";
         let cleaned = String(text).toLowerCase();
         
-        // Sostituisce ogni stringa presente in notWords con uno spazio vuoto
         this.notWords.forEach(word => {
             if (word) {
-                // Regex per sostituire le parole esatte ignorando maiuscole
-                const regex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+                const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(escaped, 'gi');
                 cleaned = cleaned.replace(regex, ' ');
             }
         });
