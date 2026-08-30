@@ -1,13 +1,14 @@
 class DatabaseManager {
     constructor() {
         this.db = null;
+        this.SQL = null;
     }
 
     async init() {
-        const SQL = await initSqlJs({
+        this.SQL = await initSqlJs({
             locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
         });
-        this.db = new SQL.Database();
+        this.db = new this.SQL.Database();
         this.createTables();
     }
 
@@ -41,6 +42,11 @@ class DatabaseManager {
         `);
     }
 
+    loadBinary(arrayBuffer) {
+        const uInt8Array = new Uint8Array(arrayBuffer);
+        this.db = new this.SQL.Database(uInt8Array);
+    }
+
     insertTransactions(records) {
         let insertedCount = 0;
         const stmt = this.db.prepare(`
@@ -48,23 +54,45 @@ class DatabaseManager {
             VALUES (?, ?, ?, ?, ?, ?, 'AUTO')
         `);
 
-        const auditStmt = this.db.prepare(`
-            INSERT INTO audit_log (transaction_id, action, new_value)
-            VALUES (?, 'INSERT_AUTO', ?)
-        `);
-
         records.forEach(rec => {
             stmt.run([rec.date_str, rec.amount, rec.category, rec.title, rec.note, rec.account]);
             if (this.db.getRowsModified() > 0) {
                 insertedCount++;
                 const lastId = this.db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-                auditStmt.run([lastId, `Importato: ${rec.title} (€${rec.amount})`]);
+                this.db.run(`INSERT INTO audit_log (transaction_id, action, new_value) VALUES (?, 'INSERT_AUTO', ?)`, 
+                    [lastId, `Data: ${rec.date_str} | ${rec.title} (€${rec.amount})`]);
             }
         });
 
         stmt.free();
-        auditStmt.free();
         return insertedCount;
+    }
+
+    updateTransaction(id, updatedFields) {
+        const currentRes = this.db.exec(`SELECT category, title, note, amount, account FROM transactions WHERE id = ?`, [id]);
+        if (!currentRes.length || !currentRes[0].values.length) return;
+
+        const [oldCat, oldTitle, oldNote, oldAmt, oldAcc] = currentRes[0].values[0];
+
+        this.db.run(`
+            UPDATE transactions 
+            SET category = ?, title = ?, note = ?, amount = ?, account = ?, status = 'MODIFIED', updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `, [updatedFields.category, updatedFields.title, updatedFields.note, updatedFields.amount, updatedFields.account, id]);
+
+        // Audit Log
+        if (oldCat !== updatedFields.category) this.logAudit(id, 'UPDATE', 'category', oldCat, updatedFields.category);
+        if (oldTitle !== updatedFields.title) this.logAudit(id, 'UPDATE', 'title', oldTitle, updatedFields.title);
+        if (oldNote !== updatedFields.note) this.logAudit(id, 'UPDATE', 'note', oldNote, updatedFields.note);
+        if (oldAmt !== updatedFields.amount) this.logAudit(id, 'UPDATE', 'amount', String(oldAmt), String(updatedFields.amount));
+        if (oldAcc !== updatedFields.account) this.logAudit(id, 'UPDATE', 'account', oldAcc, updatedFields.account);
+    }
+
+    logAudit(txId, action, field, oldVal, newVal) {
+        this.db.run(`
+            INSERT INTO audit_log (transaction_id, action, field_changed, old_value, new_value)
+            VALUES (?, ?, ?, ?, ?)
+        `, [txId, action, field, String(oldVal || ''), String(newVal || '')]);
     }
 
     getActiveTransactions() {
@@ -82,7 +110,7 @@ class DatabaseManager {
     }
 
     getAuditLog() {
-        const res = this.db.exec(`SELECT * FROM audit_log ORDER BY id DESC`);
+        const res = this.db.exec(`SELECT id, transaction_id, action, field_changed, old_value, new_value, timestamp FROM audit_log ORDER BY id DESC`);
         if (!res.length) return [];
         return res[0].values.map(row => ({
             id: row[0], transaction_id: row[1], action: row[2],
@@ -92,14 +120,10 @@ class DatabaseManager {
 
     softDeleteTransaction(id) {
         this.db.run(`UPDATE transactions SET status = 'DELETED' WHERE id = ?`, [id]);
-        this.db.run(`INSERT INTO audit_log (transaction_id, action) VALUES (?, 'SOFT_DELETE')`, [id]);
+        this.logAudit(id, 'SOFT_DELETE', 'status', 'ACTIVE', 'DELETED');
     }
 
     exportBinary() {
         return this.db.export();
-    }
-
-    loadBinary(arrayBuffer) {
-        this.db = new SQL.Database(new Uint8Array(arrayBuffer));
     }
 }
