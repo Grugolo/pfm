@@ -2,7 +2,6 @@
 Personal Finance Manager
 
 ```
-my-finance-app/
 ├── index.html
 ├── css/
 │   └── style.css
