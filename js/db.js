@@ -12,6 +12,13 @@ class DatabaseManager {
         this.createTables();
     }
 
+    // Ritorna la data/ora locale formattata YYYY-MM-DD HH:mm:ss
+    getNowLocal() {
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
     createTables() {
         this.db.run(`
             CREATE TABLE IF NOT EXISTS transactions (
@@ -23,8 +30,8 @@ class DatabaseManager {
                 note TEXT,
                 account TEXT NOT NULL,
                 status TEXT DEFAULT 'AUTO',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT,
+                updated_at TEXT,
                 UNIQUE(date_str, amount, title, account)
             );
         `);
@@ -37,30 +44,31 @@ class DatabaseManager {
                 field_changed TEXT,
                 old_value TEXT,
                 new_value TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                timestamp TEXT
             );
         `);
     }
 
     loadBinary(arrayBuffer) {
-        const uInt8Array = new Uint8Array(arrayBuffer);
-        this.db = new this.SQL.Database(uInt8Array);
+        this.db = new this.SQL.Database(new Uint8Array(arrayBuffer));
     }
 
     insertTransactions(records) {
         let insertedCount = 0;
+        const now = this.getNowLocal();
+
         const stmt = this.db.prepare(`
-            INSERT OR IGNORE INTO transactions (date_str, amount, category, title, note, account, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'AUTO')
+            INSERT OR IGNORE INTO transactions (date_str, amount, category, title, note, account, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'AUTO', ?, ?)
         `);
 
         records.forEach(rec => {
-            stmt.run([rec.date_str, rec.amount, rec.category, rec.title, rec.note, rec.account]);
+            stmt.run([rec.date_str, rec.amount, rec.category, rec.title, rec.note, rec.account, now, now]);
             if (this.db.getRowsModified() > 0) {
                 insertedCount++;
                 const lastId = this.db.exec("SELECT last_insert_rowid()")[0].values[0][0];
-                this.db.run(`INSERT INTO audit_log (transaction_id, action, new_value) VALUES (?, 'INSERT_AUTO', ?)`, 
-                    [lastId, `Data: ${rec.date_str} | ${rec.title} (€${rec.amount})`]);
+                this.db.run(`INSERT INTO audit_log (transaction_id, action, new_value, timestamp) VALUES (?, 'INSERT_AUTO', ?, ?)`, 
+                    [lastId, `${rec.title} (€${rec.amount})`, now]);
             }
         });
 
@@ -73,35 +81,31 @@ class DatabaseManager {
         if (!currentRes.length || !currentRes[0].values.length) return;
 
         const [oldCat, oldTitle, oldNote, oldAmt, oldAcc] = currentRes[0].values[0];
+        const now = this.getNowLocal();
 
         this.db.run(`
             UPDATE transactions 
-            SET category = ?, title = ?, note = ?, amount = ?, account = ?, status = 'MODIFIED', updated_at = CURRENT_TIMESTAMP
+            SET category = ?, title = ?, note = ?, amount = ?, account = ?, status = 'MODIFIED', updated_at = ?
             WHERE id = ?
-        `, [updatedFields.category, updatedFields.title, updatedFields.note, updatedFields.amount, updatedFields.account, id]);
+        `, [updatedFields.category, updatedFields.title, updatedFields.note, updatedFields.amount, updatedFields.account, now, id]);
 
-        // Audit Log
         if (oldCat !== updatedFields.category) this.logAudit(id, 'UPDATE', 'category', oldCat, updatedFields.category);
         if (oldTitle !== updatedFields.title) this.logAudit(id, 'UPDATE', 'title', oldTitle, updatedFields.title);
         if (oldNote !== updatedFields.note) this.logAudit(id, 'UPDATE', 'note', oldNote, updatedFields.note);
-        if (oldAmt !== updatedFields.amount) this.logAudit(id, 'UPDATE', 'amount', String(oldAmt), String(updatedFields.amount));
+        if (oldAmt !== updatedFields.amount) this.logAudit(id, 'UPDATE', 'amount', oldAmt, updatedFields.amount);
         if (oldAcc !== updatedFields.account) this.logAudit(id, 'UPDATE', 'account', oldAcc, updatedFields.account);
     }
 
     logAudit(txId, action, field, oldVal, newVal) {
+        const now = this.getNowLocal();
         this.db.run(`
-            INSERT INTO audit_log (transaction_id, action, field_changed, old_value, new_value)
-            VALUES (?, ?, ?, ?, ?)
-        `, [txId, action, field, String(oldVal || ''), String(newVal || '')]);
+            INSERT INTO audit_log (transaction_id, action, field_changed, old_value, new_value, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, [txId, action, field, String(oldVal || ''), String(newVal || ''), now]);
     }
 
     getActiveTransactions() {
-        const res = this.db.exec(`
-            SELECT id, date_str, amount, category, title, note, account, status 
-            FROM transactions 
-            WHERE status != 'DELETED' 
-            ORDER BY date_str DESC, id DESC
-        `);
+        const res = this.db.exec(`SELECT id, date_str, amount, category, title, note, account, status FROM transactions WHERE status != 'DELETED' ORDER BY date_str DESC, id DESC`);
         if (!res.length) return [];
         return res[0].values.map(row => ({
             id: row[0], date_str: row[1], amount: row[2], category: row[3],
@@ -123,7 +127,5 @@ class DatabaseManager {
         this.logAudit(id, 'SOFT_DELETE', 'status', 'ACTIVE', 'DELETED');
     }
 
-    exportBinary() {
-        return this.db.export();
-    }
+    exportBinary() { return this.db.export(); }
 }
