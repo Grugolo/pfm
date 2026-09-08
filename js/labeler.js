@@ -5,14 +5,14 @@ class AutoLabeler {
         this.incomeRules = [];
         this.accountMappings = [];
         
-        // Raw matrix arrays for the live rule editors
+        // Rimosso "Account ID", ora la struttura ha 4 colonne: Account Name, Amount Column, Date Column, Description Columns
         this.sourcesRawData = JSON.parse(localStorage.getItem('pfm_sources_json')) || [
-            ["Account Name", "Account ID", "Amount Column", "Date Column", "Description Columns"],
-            ["ing", "ing", "IMPORTO IN EURO", "DATA VALUTA", "CAUSALE, DESCRIZIONE OPERAZIONE"],
-            ["conto corrente", "isp", "Importo", "Data", "Operazione, Dettagli"],
-            ["prepagata", "cc2", "Accrediti, Addebiti", "Data valuta", "Descrizione"],
-            ["satispay", "ssp", "Amount", "Date", "Type, Name, Description, ID"],
-            ["paypal", "ppl", "Lordo", "Data", "Nome, Nota"]
+            ["Account Name", "Amount Column", "Date Column", "Description Columns"],
+            ["ing", "IMPORTO IN EURO", "DATA VALUTA, DATA CONTABILE", "CAUSALE, DESCRIZIONE OPERAZIONE"],
+            ["conto corrente", "Importo", "Data", "Operazione, Dettagli"],
+            ["prepagata", "Accrediti, Addebiti", "Data valuta", "Descrizione"],
+            ["satispay", "Amount", "Date", "Type, Name, Description, ID"],
+            ["paypal", "Lordo", "Data", "Nome, Nota"]
         ];
 
         this.susRawData = JSON.parse(localStorage.getItem('pfm_sus_json')) || [
@@ -25,18 +25,19 @@ class AutoLabeler {
     }
 
     parseRulesFromMemory() {
-        // Parse Sources
+        // Parse Sources (aggiornato a 4 colonne senza Account ID)
         this.accountMappings = [];
         if (this.sourcesRawData.length > 1) {
             for (let i = 1; i < this.sourcesRawData.length; i++) {
                 const r = this.sourcesRawData[i];
-                if (r[0] && r[1]) {
+                if (r[0]) {
+                    const accName = String(r[0]).trim().toLowerCase();
                     this.accountMappings.push({
-                        keyword: String(r[0]).trim().toLowerCase(),
-                        accountCode: String(r[1]).trim().toLowerCase(),
-                        amountCol: r[2] ? String(r[2]).trim() : '',
-                        dateCol: r[3] ? String(r[3]).trim() : '',
-                        descCols: r[4] ? String(r[4]).trim() : ''
+                        keyword: accName,
+                        accountCode: accName,
+                        amountCol: r[1] ? String(r[1]).trim() : '',
+                        dateCol: r[2] ? String(r[2]).trim() : '',
+                        descCols: r[3] ? String(r[3]).trim() : ''
                     });
                 }
             }
@@ -97,7 +98,6 @@ class AutoLabeler {
             this.sourcesRawData = rows;
             localStorage.setItem('pfm_sources_json', JSON.stringify(this.sourcesRawData));
         } else {
-            // Default check based on columns width or headers
             if (rows[0] && String(rows[0][0]).toLowerCase().includes('account')) {
                 this.sourcesRawData = rows;
                 localStorage.setItem('pfm_sources_json', JSON.stringify(this.sourcesRawData));
@@ -116,7 +116,6 @@ class AutoLabeler {
         for (let map of this.accountMappings) {
             if (fn.includes(map.keyword)) return map;
         }
-        // Fallback default structure
         return { accountCode: 'isp', amountCol: 'Importo', dateCol: 'Data', descCols: 'Operazione, Dettagli' };
     }
 
