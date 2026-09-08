@@ -18,43 +18,39 @@ class BankParser {
         const targetAmtCols = (sourceConfig.amountCol || 'Importo').toUpperCase().split(',').map(s => s.trim());
         const targetDescCols = (sourceConfig.descCols || 'Descrizione').toUpperCase().split(',').map(s => s.trim());
 
-        // 1) Cerca le intestazioni scorrendo le prime righe del file (potrebbe non essere la prima riga)
+        // 1) Cerca dinamicamente le intestazioni (come find_header_row in python)
+        const commonHeaders = ["DATA", "DATA CONTABILE", "DATA VALUTA", "DATE", "IMPORTO IN EURO", "IMPORTO", "AMOUNT"];
         for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i];
             if (!row || !Array.isArray(row)) continue;
 
-            let foundDate = false;
-            row.forEach((cell, colIdx) => {
-                if (cell === null || cell === undefined) return;
-                const h = String(cell).toUpperCase().trim();
-                
-                if (targetDateCols.some(dc => h === dc || h.includes(dc))) {
-                    if (!dateColIndices.includes(colIdx)) dateColIndices.push(colIdx);
-                    foundDate = true;
-                }
-                if (targetAmtCols.some(ac => h === ac || h.includes(ac))) {
-                    if (!amtColIndices.includes(colIdx)) amtColIndices.push(colIdx);
-                }
-                if (targetDescCols.some(dc => h === dc || h.includes(dc))) {
-                    if (!descColIndices.includes(colIdx)) descColIndices.push(colIdx);
-                }
-            });
+            const rowUpper = row.map(c => c ? String(c).toUpperCase().trim() : "");
+            
+            // Verifica se la riga contiene parole chiave tipiche di un header o quelle mappate
+            let isHeader = rowUpper.some(c => commonHeaders.includes(c) || targetDateCols.includes(c) || targetAmtCols.includes(c));
 
-            if (foundDate) {
+            if (isHeader) {
                 headerIdx = i;
+                rowUpper.forEach((h, colIdx) => {
+                    if (!h) return;
+                    if (targetDateCols.some(dc => h === dc || h.includes(dc))) dateColIndices.push(colIdx);
+                    if (targetAmtCols.some(ac => h === ac || h.includes(ac))) amtColIndices.push(colIdx);
+                    if (targetDescCols.some(dc => h === dc || h.includes(dc))) descColIndices.push(colIdx);
+                });
                 break;
             }
         }
 
-        if (headerIdx === -1) headerIdx = 0; // Fallback alla riga 0
+        if (headerIdx === -1) headerIdx = 0; // Fallback se non lo trova
 
         const records = [];
-        // 2) Prende i dati a partire dalla riga sotto l'intestazione individuata
+        
+        // 2) Partiamo a ciclare ESATTAMENTE dalla riga sotto l'intestazione
         for (let i = headerIdx + 1; i < rows.length; i++) {
             const row = rows[i];
             if (!row) continue;
 
-            // Se sono presenti più campi per la data, calcola e prende la minore (più antecedente)
+            // 3) Prendi la DATA MINORE (più vecchia) se ci sono più colonne (come min(valid_dates) in Python)
             let validDates = [];
             const colsToSearchDate = dateColIndices.length > 0 ? dateColIndices : [0];
             colsToSearchDate.forEach(cIdx => {
@@ -63,7 +59,7 @@ class BankParser {
             });
 
             if (validDates.length === 0) continue;
-            validDates.sort(); // Ordinamento alfabetico/cronologico crescente: la prima è la minore
+            validDates.sort(); // Stringhe "YYYY-MM-DD" ordinate alfabeticamente portano la minore all'indice 0
             const dateStr = validDates[0];
 
             let amount = 0;
@@ -72,30 +68,28 @@ class BankParser {
                 const val = BankParser.parseAmount(row[cIdx]);
                 if (val !== 0) { amount = val; break; }
             }
-
             if (amount === 0) continue;
 
-            // Concatenazione dei campi descrizione unendoli con uno spazio
+            // 4) Concatenazione Descrizione con spazio (" ".join(desc_parts) in Python)
             let descParts = [];
             const colsToSearchDesc = descColIndices.length > 0 ? descColIndices : row.map((_, idx) => idx);
             colsToSearchDesc.forEach(colIdx => {
                 if (row[colIdx] !== undefined && row[colIdx] !== null) {
                     const val = String(row[colIdx]).trim();
-                    if (val && !descParts.includes(val) && isNaN(val)) {
-                        descParts.push(val);
-                    }
+                    if (val && val !== "NaN") descParts.push(val);
                 }
             });
-            let note = descParts.join(' '); // Uniti con uno spazio
+            let descrizione = descParts.join(' '); 
 
-            const predicted = labeler.predict(note, amount);
+            // Predizione passata dal labeler
+            const predicted = labeler.predict(descrizione, amount);
 
             records.push({
                 date_str: dateStr,
                 amount: amount,
                 category: predicted.category,
                 title: predicted.title,
-                note: note,
+                descrizione: descrizione, // Rinominato da note a descrizione
                 account: account
             });
         }
