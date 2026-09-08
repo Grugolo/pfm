@@ -10,67 +10,83 @@ class BankParser {
         const account = sourceConfig.accountCode;
 
         let headerIdx = -1;
-        let dateColIdx = -1, amtColIdx = -1;
+        let dateColIndices = [];
+        let amtColIndices = [];
         let descColIndices = [];
 
-        const targetDateCol = (sourceConfig.dateCol || 'Data').toUpperCase();
+        const targetDateCols = (sourceConfig.dateCol || 'Data').toUpperCase().split(',').map(s => s.trim());
         const targetAmtCols = (sourceConfig.amountCol || 'Importo').toUpperCase().split(',').map(s => s.trim());
         const targetDescCols = (sourceConfig.descCols || 'Descrizione').toUpperCase().split(',').map(s => s.trim());
 
+        // 1) Cerca le intestazioni scorrendo le prime righe del file (potrebbe non essere la prima riga)
         for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i];
             if (!row || !Array.isArray(row)) continue;
 
+            let foundDate = false;
             row.forEach((cell, colIdx) => {
                 if (cell === null || cell === undefined) return;
                 const h = String(cell).toUpperCase().trim();
                 
-                if (h === targetDateCol || h.includes(targetDateCol)) dateColIdx = colIdx;
-                if (targetAmtCols.includes(h) || targetAmtCols.some(ac => h.includes(ac))) amtColIdx = colIdx;
-                if (targetDescCols.some(dc => h.includes(dc))) {
+                if (targetDateCols.some(dc => h === dc || h.includes(dc))) {
+                    if (!dateColIndices.includes(colIdx)) dateColIndices.push(colIdx);
+                    foundDate = true;
+                }
+                if (targetAmtCols.some(ac => h === ac || h.includes(ac))) {
+                    if (!amtColIndices.includes(colIdx)) amtColIndices.push(colIdx);
+                }
+                if (targetDescCols.some(dc => h === dc || h.includes(dc))) {
                     if (!descColIndices.includes(colIdx)) descColIndices.push(colIdx);
                 }
             });
 
-            if (dateColIdx !== -1) {
+            if (foundDate) {
                 headerIdx = i;
                 break;
             }
         }
 
-        if (headerIdx === -1) headerIdx = 0; // Fallback to first row if headers unconfigured
+        if (headerIdx === -1) headerIdx = 0; // Fallback alla riga 0
 
         const records = [];
+        // 2) Prende i dati a partire dalla riga sotto l'intestazione individuata
         for (let i = headerIdx + 1; i < rows.length; i++) {
             const row = rows[i];
             if (!row) continue;
 
-            const dateVal = dateColIdx !== -1 ? row[dateColIdx] : row[0];
-            const dateStr = BankParser.formatISODate(dateVal);
-            if (!dateStr) continue;
+            // Se sono presenti più campi per la data, calcola e prende la minore (più antecedente)
+            let validDates = [];
+            const colsToSearchDate = dateColIndices.length > 0 ? dateColIndices : [0];
+            colsToSearchDate.forEach(cIdx => {
+                const parsedIso = BankParser.formatISODate(row[cIdx]);
+                if (parsedIso) validDates.push(parsedIso);
+            });
+
+            if (validDates.length === 0) continue;
+            validDates.sort(); // Ordinamento alfabetico/cronologico crescente: la prima è la minore
+            const dateStr = validDates[0];
 
             let amount = 0;
-            if (amtColIdx !== -1 && row[amtColIdx] !== undefined) {
-                amount = BankParser.parseAmount(row[amtColIdx]);
-            } else {
-                // Look for first available numeric amount column fallback
-                for (let c = 0; c < row.length; c++) {
-                    const val = BankParser.parseAmount(row[c]);
-                    if (val !== 0) { amount = val; break; }
-                }
+            const colsToSearchAmt = amtColIndices.length > 0 ? amtColIndices : row.map((_, idx) => idx);
+            for (let cIdx of colsToSearchAmt) {
+                const val = BankParser.parseAmount(row[cIdx]);
+                if (val !== 0) { amount = val; break; }
             }
 
             if (amount === 0) continue;
 
-            let noteParts = [];
-            const colsToScan = descColIndices.length > 0 ? descColIndices : row.map((_, idx) => idx);
-            colsToScan.forEach(colIdx => {
+            // Concatenazione dei campi descrizione unendoli con uno spazio
+            let descParts = [];
+            const colsToSearchDesc = descColIndices.length > 0 ? descColIndices : row.map((_, idx) => idx);
+            colsToSearchDesc.forEach(colIdx => {
                 if (row[colIdx] !== undefined && row[colIdx] !== null) {
                     const val = String(row[colIdx]).trim();
-                    if (val && !noteParts.includes(val) && isNaN(val)) noteParts.push(val);
+                    if (val && !descParts.includes(val) && isNaN(val)) {
+                        descParts.push(val);
+                    }
                 }
             });
-            let note = noteParts.join(' - ');
+            let note = descParts.join(' '); // Uniti con uno spazio
 
             const predicted = labeler.predict(note, amount);
 
