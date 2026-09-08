@@ -35,7 +35,7 @@ is named in your financial files.
 Expenses and incomes will be auto-labeled according to a "sus. xlsx" file to be submitted via the same settings tab. In "sus.xlsx" you should write: 
 - • a list of words to be excluded from parsing (A2:A999) 
 - • a list of keyword, category, expense type (B2:B999, C2:C999, D2:D999)
-- • a of keyword, category, income type (E2:E999, F2:F999, G2:G999)
+- • a list of keyword, category, income type (E2:E999, F2:F999, G2:G999)
 
 ### View data
 Besides settings, import, and export tabs, you'll have two main pages: 
