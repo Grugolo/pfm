@@ -1,3 +1,4 @@
+
 class App {
     constructor() {
         this.dbMgr = new DatabaseManager();
@@ -11,8 +12,21 @@ class App {
         this.STORAGE_KEY_FILTERS = 'finance_app_filters_v1';
     }
 
+    /* 🔒 Escape HTML per prevenire XSS su dati importati/utente */
+    esc(val) {
+        const div = document.createElement('div');
+        div.textContent = String(val === undefined || val === null ? '' : val);
+        return div.innerHTML;
+    }
+
     async init() {
-        await this.dbMgr.init();
+        try {
+            await this.dbMgr.init();
+        } catch (err) {
+            console.error(err);
+            alert("Errore critico: impossibile inizializzare il database (sql.js). Ricarica la pagina o controlla la connessione.");
+            return;
+        }
         this.loadFiltersFromStorage(); // Ripristina i filtri salvati
         this.renderTransactions();
         this.renderAuditLog();
@@ -39,16 +53,21 @@ class App {
             const fn = file.name.toLowerCase();
             const buffer = await file.arrayBuffer();
 
-            if (fn.includes('sus')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSusFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${file.name}</strong> caricate!</div>`;
-            } else if (fn.includes('sources')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSourcesFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${file.name}</strong> caricate!</div>`;
-            } else {
-                statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${file.name}</div>`;
+            try {
+                if (fn.includes('sus')) {
+                    const wb = XLSX.read(buffer, { type: 'array' });
+                    this.labeler.loadSusFromWorkbook(wb);
+                    statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${this.esc(file.name)}</strong> caricate!</div>`;
+                } else if (fn.includes('sources')) {
+                    const wb = XLSX.read(buffer, { type: 'array' });
+                    this.labeler.loadSourcesFromWorkbook(wb);
+                    statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${this.esc(file.name)}</strong> caricate!</div>`;
+                } else {
+                    statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${this.esc(file.name)}</div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerHTML += `<div>❌ Errore nel file <strong>${this.esc(file.name)}</strong>: ${this.esc(err.message)}</div>`;
             }
         }
     }
@@ -66,19 +85,24 @@ class App {
 
         for (let file of files) {
             const fn = file.name.toLowerCase();
-            const buffer = await file.arrayBuffer();
+            try {
+                const buffer = await file.arrayBuffer();
 
-            if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
-                this.dbMgr.loadBinary(buffer);
-                statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
-            } else if (fn.endsWith('.xlsx')) {
-                const records = BankParser.parseExcel(buffer, file.name, this.labeler);
-                if (records.length > 0) {
-                    const count = this.dbMgr.insertTransactions(records);
-                    statusDiv.innerHTML += `<div>✅ Bank Excel <strong>${file.name}</strong>: ${count} nuove transazioni!</div>`;
-                } else {
-                    statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${file.name}</strong>.</div>`;
+                if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
+                    this.dbMgr.loadBinary(buffer);
+                    statusDiv.innerHTML += `<div>✅ DB: <strong>${this.esc(file.name)}</strong> caricato.</div>`;
+                } else if (fn.endsWith('.xlsx')) {
+                    const records = BankParser.parseExcel(buffer, file.name, this.labeler);
+                    if (records.length > 0) {
+                        const count = this.dbMgr.insertTransactions(records);
+                        statusDiv.innerHTML += `<div>✅ Bank Excel <strong>${this.esc(file.name)}</strong>: ${count} nuove transazioni!</div>`;
+                    } else {
+                        statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${this.esc(file.name)}</strong>.</div>`;
+                    }
                 }
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerHTML += `<div>❌ Errore caricando <strong>${this.esc(file.name)}</strong>: ${this.esc(err.message)}</div>`;
             }
         }
         this.renderTransactions();
@@ -211,7 +235,7 @@ class App {
         const currentAcc = accSelect.value;
         accSelect.innerHTML = '<option value="">Tutti</option>';
         accounts.forEach(a => {
-            accSelect.innerHTML += `<option value="${a}" ${a === currentAcc ? 'selected' : ''}>${a.toUpperCase()}</option>`;
+            accSelect.innerHTML += `<option value="${this.esc(a)}" ${a === currentAcc ? 'selected' : ''}>${this.esc(a.toUpperCase())}</option>`;
         });
 
         // Lettura filtri
@@ -266,12 +290,12 @@ class App {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${t.id}</td>
-                <td>${t.date_str}</td>
+                <td>${this.esc(t.date_str)}</td>
                 <td class="${t.amount >= 0 ? 'amount-income' : 'amount-expense'}">€ ${t.amount.toFixed(2)}</td>
-                <td><span class="badge">${t.category}</span></td>
-                <td>${t.title}</td>
-                <td>${t.note}</td>
-                <td><strong style="color:var(--primary);">${t.account.toUpperCase()}</strong></td>
+                <td><span class="badge">${this.esc(t.category)}</span></td>
+                <td>${this.esc(t.title)}</td>
+                <td>${this.esc(t.note)}</td>
+                <td><strong style="color:var(--primary);">${this.esc(t.account.toUpperCase())}</strong></td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-edit-sm" onclick="app.openTransactionModal(${t.id})">✏️</button>
                     <button class="btn btn-danger-sm" onclick="app.deleteTx(${t.id})">🗑️</button>
@@ -331,11 +355,11 @@ class App {
             tr.innerHTML = `
                 <td>${log.id}</td>
                 <td>${log.transaction_id}</td>
-                <td><span class="badge badge-status ${log.action}">${log.action}</span></td>
-                <td>${log.field_changed || '-'}</td>
-                <td>${log.old_value || '-'}</td>
-                <td>${log.new_value || '-'}</td>
-                <td>${log.timestamp}</td>
+                <td><span class="badge badge-status ${this.esc(log.action)}">${this.esc(log.action)}</span></td>
+                <td>${this.esc(log.field_changed || '-')}</td>
+                <td>${this.esc(log.old_value || '-')}</td>
+                <td>${this.esc(log.new_value || '-')}</td>
+                <td>${this.esc(log.timestamp)}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -422,3 +446,4 @@ class App {
 
 const app = new App();
 window.onload = () => app.init();
+

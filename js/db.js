@@ -1,3 +1,4 @@
+
 class DatabaseManager {
     constructor() {
         this.db = null;
@@ -31,7 +32,7 @@ class DatabaseManager {
                 status TEXT DEFAULT 'AUTO',
                 created_at TEXT,
                 updated_at TEXT,
-                UNIQUE(date_str, amount, title, account)
+                UNIQUE(date_str, amount, title, account, note)
             );
         `);
 
@@ -141,3 +142,4 @@ class DatabaseManager {
 
     exportBinary() { return this.db.export(); }
 }
+

@@ -1,3 +1,4 @@
+
 class Exporter {
     static exportCSV(transactions) {
         let csvContent = "Date\tAmount\tCategory\tTitle\tNote\tAccount\n";
@@ -27,3 +28,4 @@ class Exporter {
         link.click();
     }
 }
+

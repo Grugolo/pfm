@@ -1,3 +1,4 @@
+
 class BankParser {
     static parseExcel(arrayBuffer, fileName, labeler) {
         const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });

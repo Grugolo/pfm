@@ -1,3 +1,4 @@
+
 class AutoLabeler {
     constructor() {
         this.notWords = new Set();
@@ -98,3 +99,4 @@ class AutoLabeler {
         return { category: "nc", title: "nc" };
     }
 }
+
