@@ -1,4 +1,3 @@
-
 class BankParser {
     static parseExcel(arrayBuffer, fileName, labeler) {
         const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
@@ -7,81 +6,68 @@ class BankParser {
 
         if (!rows || rows.length === 0) return [];
 
+        const sourceConfig = labeler.getSourceConfig(fileName);
+        const account = sourceConfig.accountCode;
+
         let headerIdx = -1;
-        let dateColIdx = -1, amtColIdx = -1, incColIdx = -1, expColIdx = -1;
+        let dateColIdx = -1, amtColIdx = -1;
         let descColIndices = [];
 
-        // Scansione flessibile su 30 righe per trovare l'intestazione
+        const targetDateCol = (sourceConfig.dateCol || 'Data').toUpperCase();
+        const targetAmtCols = (sourceConfig.amountCol || 'Importo').toUpperCase().split(',').map(s => s.trim());
+        const targetDescCols = (sourceConfig.descCols || 'Descrizione').toUpperCase().split(',').map(s => s.trim());
+
         for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i];
             if (!row || !Array.isArray(row)) continue;
 
-            let tempDescCols = [];
-            let foundDate = -1, foundAmt = -1, foundInc = -1, foundExp = -1;
-
             row.forEach((cell, colIdx) => {
                 if (cell === null || cell === undefined) return;
                 const h = String(cell).toUpperCase().trim();
-                if (!h) return;
                 
-                // Date recognition
-                if (foundDate === -1 && (h.includes('DATA') || h.includes('DATE') || h.includes('TIME') || h.includes('TIMESTAMP'))) {
-                    foundDate = colIdx;
-                }
-                // Amount recognition
-                if (h === 'IMPORTO' || h === 'AMOUNT' || h.includes('IMPORTO (') || h === 'VALORE') {
-                    foundAmt = colIdx;
-                }
-                if (h.includes('ACCREDITI') || h.includes('ENTRATE') || h.includes('CREDIT')) foundInc = colIdx;
-                if (h.includes('ADDEBITI') || h.includes('USCITE') || h.includes('DEBIT')) foundExp = colIdx;
-
-                // Description recognition (Accorpa più colonne descrittive se presenti)
-                if (h.includes('CAUSALE') || h.includes('DESCRIZIONE') || h.includes('COUNTERPARTY') || 
-                    h.includes('NAME') || h.includes('NOME') || h.includes('EXTRA') || h.includes('SUBJECT') || h.includes('NOTE')) {
-                    tempDescCols.push(colIdx);
+                if (h === targetDateCol || h.includes(targetDateCol)) dateColIdx = colIdx;
+                if (targetAmtCols.includes(h) || targetAmtCols.some(ac => h.includes(ac))) amtColIdx = colIdx;
+                if (targetDescCols.some(dc => h.includes(dc))) {
+                    if (!descColIndices.includes(colIdx)) descColIndices.push(colIdx);
                 }
             });
 
-            if (foundDate !== -1 && (foundAmt !== -1 || (foundInc !== -1 || foundExp !== -1))) {
+            if (dateColIdx !== -1) {
                 headerIdx = i;
-                dateColIdx = foundDate;
-                amtColIdx = foundAmt;
-                incColIdx = foundInc;
-                expColIdx = foundExp;
-                descColIndices = tempDescCols;
                 break;
             }
         }
 
-        if (headerIdx === -1 || dateColIdx === -1) return [];
+        if (headerIdx === -1) headerIdx = 0; // Fallback to first row if headers unconfigured
 
-        const account = labeler.detectAccount(fileName);
         const records = [];
-
         for (let i = headerIdx + 1; i < rows.length; i++) {
             const row = rows[i];
-            if (!row || row[dateColIdx] === undefined || row[dateColIdx] === null) continue;
+            if (!row) continue;
 
-            const dateStr = BankParser.formatISODate(row[dateColIdx]);
+            const dateVal = dateColIdx !== -1 ? row[dateColIdx] : row[0];
+            const dateStr = BankParser.formatISODate(dateVal);
             if (!dateStr) continue;
 
             let amount = 0;
             if (amtColIdx !== -1 && row[amtColIdx] !== undefined) {
                 amount = BankParser.parseAmount(row[amtColIdx]);
             } else {
-                const inc = incColIdx !== -1 ? BankParser.parseAmount(row[incColIdx]) : 0;
-                const exp = expColIdx !== -1 ? BankParser.parseAmount(row[expColIdx]) : 0;
-                amount = inc !== 0 ? Math.abs(inc) : -Math.abs(exp);
+                // Look for first available numeric amount column fallback
+                for (let c = 0; c < row.length; c++) {
+                    const val = BankParser.parseAmount(row[c]);
+                    if (val !== 0) { amount = val; break; }
+                }
             }
 
             if (amount === 0) continue;
 
-            // Unisci il contenuto di tutte le colonne descrittive trovate
             let noteParts = [];
-            descColIndices.forEach(colIdx => {
+            const colsToScan = descColIndices.length > 0 ? descColIndices : row.map((_, idx) => idx);
+            colsToScan.forEach(colIdx => {
                 if (row[colIdx] !== undefined && row[colIdx] !== null) {
                     const val = String(row[colIdx]).trim();
-                    if (val && !noteParts.includes(val)) noteParts.push(val);
+                    if (val && !noteParts.includes(val) && isNaN(val)) noteParts.push(val);
                 }
             });
             let note = noteParts.join(' - ');
@@ -103,21 +89,18 @@ class BankParser {
     static parseAmount(val) {
         if (val === undefined || val === null || val === '') return 0.0;
         if (typeof val === 'number') return isNaN(val) ? 0.0 : val;
-
         let str = String(val).replace(/[^0-9\,\.\-]/g, '').trim();
         if (!str) return 0.0;
 
         if (str.includes(',') && str.includes('.')) {
-            // Es: "1.234,56" -> "1234.56"
             if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
                 str = str.replace(/\./g, '').replace(',', '.');
-            } else { // Es: "1,234.56" -> "1234.56"
+            } else {
                 str = str.replace(/\,/g, '');
             }
         } else if (str.includes(',')) {
             str = str.replace(',', '.');
         }
-
         return parseFloat(str) || 0.0;
     }
 
@@ -125,44 +108,23 @@ class BankParser {
         if (!val) return null;
         if (val instanceof Date) {
             if (isNaN(val.getTime())) return null;
-            const yyyy = val.getFullYear();
-            const mm = String(val.getMonth() + 1).padStart(2, '0');
-            const dd = String(val.getDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
+            return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
         }
-
         const str = String(val).trim();
-        // Gestione formati GG/MM/AAAA o AAAA-MM-GG
         const parts = str.split(/[\/\-\.\s]/);
         if (parts.length >= 3) {
             let year, month, day;
-            if (parts[0].length === 4) { // YYYY-MM-DD
-                year = parts[0];
-                month = parts[1].padStart(2, '0');
-                day = parts[2].padStart(2, '0');
-            } else if (parts[2].length === 4) { // DD-MM-YYYY
-                day = parts[0].padStart(2, '0');
-                month = parts[1].padStart(2, '0');
-                year = parts[2];
-            } else if (parts[2].length === 2) { // DD-MM-YY
-                day = parts[0].padStart(2, '0');
-                month = parts[1].padStart(2, '0');
-                year = '20' + parts[2];
-            }
-
+            if (parts[0].length === 4) { year = parts[0]; month = parts[1]; day = parts[2]; }
+            else if (parts[2].length === 4) { day = parts[0]; month = parts[1]; year = parts[2]; }
+            else if (parts[2].length === 2) { day = parts[0]; month = parts[1]; year = '20' + parts[2]; }
             if (year && month && day) {
-                return `${year}-${month}-${day}`;
+                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
             }
         }
-
         const d = new Date(str);
         if (!isNaN(d.getTime())) {
-            const yyyy = d.getFullYear();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return `${yyyy}-${mm}-${dd}`;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
-
         return null;
     }
 }
