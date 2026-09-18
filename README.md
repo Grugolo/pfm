@@ -1,3 +1,4 @@
+
 # pfm
 Personal Finance Manager
 
@@ -47,3 +48,24 @@ You can tap to the + putton at the bottom-right of the screen to manually insert
 
 ### Export data
 You can tap on 💾 to export data as. xlsx, .csv, or .db
+
+
+
+## Aggiornamenti al sistema di labeling (2026)
+
+**Formato regole `sus.xlsx`** (colonna kw uscite/entrate) ora supporta:
+- `conad|esselunga|carrefour` → OR, matcha una qualsiasi alternativa
+- `amazon&prime` → AND, devono comparire entrambi i termini
+- `re:^netflix` → regex esplicita
+- Match sempre su **parola intera** (word-boundary), non più substring grezzo:
+  evita falsi positivi tipo "bar" dentro "barbiere".
+- A parità di match multipli vince la regola più **specifica** (keyword più
+  lunga / più termini AND), indipendentemente dall'ordine delle righe nel file.
+
+**Import bancario**: ora supporta anche **.csv/.txt** oltre a .xlsx/.xls, con
+autodetect del delimitatore (`; , tab |`) e dell'encoding. L'header viene
+cercato nelle prime 40 righe scegliendo quella con il punteggio migliore
+(più colonne riconosciute), non più la prima che matcha genericamente.
+
+Nel modale ⚙️ Impostazioni è disponibile "🔄 Rietichetta transazioni esistenti"
+per riapplicare le regole aggiornate senza dover ricaricare i file bancari.
