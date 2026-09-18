@@ -1,3 +1,4 @@
+
 class App {
     constructor() {
         this.dbMgr = new DatabaseManager();
@@ -42,15 +43,35 @@ class App {
             if (fn.includes('sus')) {
                 const wb = XLSX.read(buffer, { type: 'array' });
                 this.labeler.loadSusFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${file.name}</strong> caricate!</div>`;
+                const nExp = this.labeler.expenseRules.length, nInc = this.labeler.incomeRules.length;
+                statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${file.name}</strong> caricate: ${nExp} uscite, ${nInc} entrate.</div>`;
             } else if (fn.includes('sources')) {
                 const wb = XLSX.read(buffer, { type: 'array' });
                 this.labeler.loadSourcesFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${file.name}</strong> caricate!</div>`;
+                statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${file.name}</strong> caricate: ${this.labeler.accountMappings.length} mapping.</div>`;
             } else {
                 statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${file.name}</div>`;
             }
         }
+    }
+
+    /* 🔄 RIETICHETTA tutte le transazioni AUTO con le regole correnti */
+    relabelAllTransactions() {
+        const txs = this.dbMgr.getActiveTransactions();
+        let changed = 0;
+        txs.forEach(t => {
+            const pred = this.labeler.predict(t.note, t.amount);
+            if (pred.category !== 'nc' && (pred.category !== t.category || pred.title !== t.title)) {
+                this.dbMgr.updateTransaction(t.id, {
+                    category: pred.category, title: pred.title,
+                    note: t.note, amount: t.amount, account: t.account
+                });
+                changed++;
+            }
+        });
+        this.renderTransactions();
+        this.renderAuditLog();
+        alert(`Rietichettatura completata: ${changed} transazioni aggiornate.`);
     }
 
     /* 📂 CARICAMENTO DATI BANCARI / DB */
@@ -71,14 +92,24 @@ class App {
             if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
                 this.dbMgr.loadBinary(buffer);
                 statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
-            } else if (fn.endsWith('.xlsx')) {
-                const records = BankParser.parseExcel(buffer, file.name, this.labeler);
-                if (records.length > 0) {
-                    const count = this.dbMgr.insertTransactions(records);
-                    statusDiv.innerHTML += `<div>✅ Bank Excel <strong>${file.name}</strong>: ${count} nuove transazioni!</div>`;
-                } else {
-                    statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${file.name}</strong>.</div>`;
+            } else if (fn.endsWith('.xlsx') || fn.endsWith('.xls') || fn.endsWith('.csv') || fn.endsWith('.txt')) {
+                try {
+                    const records = BankParser.parseFile(buffer, file.name, this.labeler);
+                    if (records.length > 0) {
+                        const count = this.dbMgr.insertTransactions(records);
+                        const unlabeled = records.filter(r => r.category === 'nc').length;
+                        let msg = `✅ <strong>${file.name}</strong>: ${count} nuove transazioni su ${records.length} lette.`;
+                        if (unlabeled > 0) msg += ` (${unlabeled} non etichettate)`;
+                        statusDiv.innerHTML += `<div>${msg}</div>`;
+                    } else {
+                        statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${file.name}</strong>. Verifica che il file contenga colonne data/importo riconoscibili.</div>`;
+                    }
+                } catch (err) {
+                    console.error(err);
+                    statusDiv.innerHTML += `<div>❌ Errore leggendo <strong>${file.name}</strong>: ${err.message}</div>`;
                 }
+            } else {
+                statusDiv.innerHTML += `<div>⚠️ Formato non supportato: ${file.name}</div>`;
             }
         }
         this.renderTransactions();
@@ -375,18 +406,23 @@ class App {
 
     closeTransactionModal() { document.getElementById('txFormModal').classList.remove('active'); }
 
+    // Live-predict mentre l'utente digita: aggiorna categoria/titolo solo se
+    // sono ancora vuoti o al valore di default "nc", per non sovrascrivere
+    // scelte manuali già fatte dall'utente.
     onNoteInputAutoPredict() {
-        const isNew = !document.getElementById('txForm_id').value;
-        if (!isNew) return;
-
         const note = document.getElementById('txForm_note').value;
         const amt = parseFloat(document.getElementById('txForm_amount').value) || 0;
-        
-        if (note.length > 2) {
-            const pred = this.labeler.predict(note, amt);
-            if (pred.category !== 'nc') document.getElementById('txForm_category').value = pred.category;
-            if (pred.title !== 'nc') document.getElementById('txForm_title').value = pred.title;
-        }
+        if (note.length < 3) return;
+
+        const catEl = document.getElementById('txForm_category');
+        const titleEl = document.getElementById('txForm_title');
+        const catEmpty = !catEl.value.trim() || catEl.value.trim() === 'nc';
+        const titleEmpty = !titleEl.value.trim() || titleEl.value.trim() === 'nc';
+        if (!catEmpty && !titleEmpty) return;
+
+        const pred = this.labeler.predict(note, amt);
+        if (catEmpty && pred.category !== 'nc') catEl.value = pred.category;
+        if (titleEmpty && pred.title !== 'nc') titleEl.value = pred.title;
     }
 
     saveTransactionFromModal() {
@@ -394,11 +430,20 @@ class App {
         const date_str = document.getElementById('txForm_date').value;
         const amount = parseFloat(document.getElementById('txForm_amount').value) || 0;
         const note = document.getElementById('txForm_note').value.trim();
-        const category = document.getElementById('txForm_category').value.trim() || 'nc';
-        const title = document.getElementById('txForm_title').value.trim() || 'nc';
+        let category = document.getElementById('txForm_category').value.trim() || 'nc';
+        let title = document.getElementById('txForm_title').value.trim() || 'nc';
         const account = document.getElementById('txForm_account').value.trim().toLowerCase() || 'isp';
 
         if (!date_str) { alert("Seleziona una data valida."); return; }
+
+        // Se l'utente non ha specificato categoria/titolo (o li ha lasciati
+        // al default "nc"), applica l'auto-labeling in base alla nota e al
+        // segno dell'importo, così come farebbe l'import automatico.
+        if ((category === 'nc' || title === 'nc') && note.length > 0) {
+            const pred = this.labeler.predict(note, amount);
+            if (category === 'nc' && pred.category !== 'nc') category = pred.category;
+            if (title === 'nc' && pred.title !== 'nc') title = pred.title;
+        }
 
         if (id) {
             this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
@@ -422,3 +467,5 @@ class App {
 
 const app = new App();
 window.onload = () => app.init();
+
+

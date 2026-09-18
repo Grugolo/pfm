@@ -1,3 +1,4 @@
+
 class DatabaseManager {
     constructor() {
         this.db = null;
@@ -141,3 +142,5 @@ class DatabaseManager {
 
     exportBinary() { return this.db.export(); }
 }
+
+
