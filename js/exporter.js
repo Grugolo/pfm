@@ -1,9 +1,9 @@
 
 class Exporter {
     static exportCSV(transactions) {
-        let csvContent = "Date\tAmount\tCategory\tTitle\tNote\tAccount\n";
+        let csvContent = "Date\tAmount\tCategory\tTipo\tNote\tConto\tEmotionalValue\n";
         transactions.forEach(t => {
-            csvContent += `${t.date_str}\t${t.amount}\t${t.category}\t${t.title}\t${t.note}\t${t.account}\n`;
+            csvContent += `${t.date_str}\t${t.amount}\t${t.category}\t${t.tipo}\t${t.note}\t${t.conto}\t${t.emotional_value ?? ''}\n`;
         });
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -11,8 +11,8 @@ class Exporter {
     }
 
     static exportXLSX(transactions) {
-        const wsData = [["Date", "Amount", "Category", "Title", "Note", "Account"]];
-        transactions.forEach(t => wsData.push([t.date_str, t.amount, t.category, t.title, t.note, t.account]));
+        const wsData = [["Date", "Amount", "Category", "Tipo", "Note", "Conto", "EmotionalValue"]];
+        transactions.forEach(t => wsData.push([t.date_str, t.amount, t.category, t.tipo, t.note, t.conto, t.emotional_value ?? '']));
 
         const ws = XLSX.utils.aoa_to_sheet(wsData);
         const wb = XLSX.utils.book_new();
@@ -28,5 +28,3 @@ class Exporter {
         link.click();
     }
 }
-
-

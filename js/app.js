@@ -10,10 +10,24 @@ class App {
         };
 
         this.STORAGE_KEY_FILTERS = 'finance_app_filters_v1';
+        this.pendingAccountFiles = []; // file .xlsx in attesa di conferma conto
+    }
+
+    /* 🔒 Escape HTML per prevenire XSS su dati importati/utente */
+    esc(val) {
+        const div = document.createElement('div');
+        div.textContent = String(val === undefined || val === null ? '' : val);
+        return div.innerHTML;
     }
 
     async init() {
-        await this.dbMgr.init();
+        try {
+            await this.dbMgr.init();
+        } catch (err) {
+            console.error(err);
+            alert("Errore critico: impossibile inizializzare il database (sql.js). Ricarica la pagina o controlla la connessione.");
+            return;
+        }
         this.loadFiltersFromStorage(); // Ripristina i filtri salvati
         this.renderTransactions();
         this.renderAuditLog();
@@ -28,8 +42,43 @@ class App {
     }
 
     /* ⚙️ GESTIONE MODALE IMPOSTAZIONI */
-    openSettingsModal() { document.getElementById('settingsModal').classList.add('active'); }
+    openSettingsModal() {
+        document.getElementById('settingsModal').classList.add('active');
+        const n = this.labeler.expenseRules.length + this.labeler.incomeRules.length;
+        const na = this.labeler.accountMappings.length;
+        document.getElementById('configStatus').innerHTML =
+            `<div>ℹ️ Regole etichette caricate: <strong>${n}</strong> · Mappature conto: <strong>${na}</strong></div>`;
+    }
     closeSettingsModal() { document.getElementById('settingsModal').classList.remove('active'); }
+
+    /* 🔄 Ri-applica le regole di etichettatura correnti alle transazioni già importate */
+    reprocessLabels() {
+        const txs = this.dbMgr.getActiveTransactions();
+        let updated = 0;
+
+        txs.forEach(t => {
+            if (t.status === 'MODIFIED') return; // rispetta le modifiche manuali dell'utente
+
+            const pred = this.labeler.predict(t.note, t.amount);
+            const changed = pred.category !== t.category || pred.tipo !== t.tipo;
+
+            if (changed) {
+                this.dbMgr.updateTransaction(t.id, {
+                    category: pred.category,
+                    tipo: pred.tipo,
+                    note: t.note,
+                    amount: t.amount,
+                    conto: t.conto,
+                    emotional_value: t.emotional_value
+                });
+                updated++;
+            }
+        });
+
+        this.renderTransactions();
+        this.renderAuditLog();
+        alert(`Ri-etichettatura completata: ${updated} transazioni aggiornate.`);
+    }
 
     async handleConfigLoad(e) {
         const files = Array.from(e.target.files);
@@ -40,38 +89,23 @@ class App {
             const fn = file.name.toLowerCase();
             const buffer = await file.arrayBuffer();
 
-            if (fn.includes('sus')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSusFromWorkbook(wb);
-                const nExp = this.labeler.expenseRules.length, nInc = this.labeler.incomeRules.length;
-                statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${file.name}</strong> caricate: ${nExp} uscite, ${nInc} entrate.</div>`;
-            } else if (fn.includes('sources')) {
-                const wb = XLSX.read(buffer, { type: 'array' });
-                this.labeler.loadSourcesFromWorkbook(wb);
-                statusDiv.innerHTML += `<div>✅ Regole sorgenti <strong>${file.name}</strong> caricate: ${this.labeler.accountMappings.length} mapping.</div>`;
-            } else {
-                statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${file.name}</div>`;
+            try {
+                if (fn.includes('sus')) {
+                    const wb = XLSX.read(buffer, { type: 'array' });
+                    this.labeler.loadSusFromWorkbook(wb);
+                    statusDiv.innerHTML += `<div>✅ Regole etichette <strong>${this.esc(file.name)}</strong> caricate!</div>`;
+                } else if (fn.includes('sources')) {
+                    const wb = XLSX.read(buffer, { type: 'array' });
+                    this.labeler.loadSourcesFromWorkbook(wb);
+                    statusDiv.innerHTML += `<div>✅ Regole conto <strong>${this.esc(file.name)}</strong> caricate!</div>`;
+                } else {
+                    statusDiv.innerHTML += `<div>⚠️ File non riconosciuto come configurazione: ${this.esc(file.name)}</div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerHTML += `<div>❌ Errore nel file <strong>${this.esc(file.name)}</strong>: ${this.esc(err.message)}</div>`;
             }
         }
-    }
-
-    /* 🔄 RIETICHETTA tutte le transazioni AUTO con le regole correnti */
-    relabelAllTransactions() {
-        const txs = this.dbMgr.getActiveTransactions();
-        let changed = 0;
-        txs.forEach(t => {
-            const pred = this.labeler.predict(t.note, t.amount);
-            if (pred.category !== 'nc' && (pred.category !== t.category || pred.title !== t.title)) {
-                this.dbMgr.updateTransaction(t.id, {
-                    category: pred.category, title: pred.title,
-                    note: t.note, amount: t.amount, account: t.account
-                });
-                changed++;
-            }
-        });
-        this.renderTransactions();
-        this.renderAuditLog();
-        alert(`Rietichettatura completata: ${changed} transazioni aggiornate.`);
     }
 
     /* 📂 CARICAMENTO DATI BANCARI / DB */
@@ -82,38 +116,87 @@ class App {
         const files = Array.from(e.target.files);
         const statusDiv = document.getElementById('loadStatus');
         statusDiv.innerHTML = "<em>Elaborazione file...</em><br>";
+        this.pendingAccountFiles = [];
 
         files.sort((a, b) => (a.name.toLowerCase().endsWith('.db') ? -1 : 1));
 
         for (let file of files) {
             const fn = file.name.toLowerCase();
-            const buffer = await file.arrayBuffer();
+            try {
+                const buffer = await file.arrayBuffer();
 
-            if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
-                this.dbMgr.loadBinary(buffer);
-                statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
-            } else if (fn.endsWith('.xlsx') || fn.endsWith('.xls') || fn.endsWith('.csv') || fn.endsWith('.txt')) {
-                try {
-                    const records = BankParser.parseFile(buffer, file.name, this.labeler);
-                    if (records.length > 0) {
-                        const count = this.dbMgr.insertTransactions(records);
-                        const unlabeled = records.filter(r => r.category === 'nc').length;
-                        let msg = `✅ <strong>${file.name}</strong>: ${count} nuove transazioni su ${records.length} lette.`;
-                        if (unlabeled > 0) msg += ` (${unlabeled} non etichettate)`;
-                        statusDiv.innerHTML += `<div>${msg}</div>`;
+                if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
+                    this.dbMgr.loadBinary(buffer);
+                    statusDiv.innerHTML += `<div>✅ DB: <strong>${this.esc(file.name)}</strong> caricato.</div>`;
+                } else if (fn.endsWith('.xlsx')) {
+                    const result = BankParser.parseExcel(buffer, file.name, this.labeler);
+                    if (result.records.length === 0) {
+                        statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${this.esc(file.name)}</strong>.</div>`;
+                    } else if (result.needsAccountConfirm) {
+                        // Conto non rilevato con certezza: accodiamo per conferma manuale invece di assumere un default
+                        this.pendingAccountFiles.push({ fileName: file.name, records: result.records });
+                        statusDiv.innerHTML += `<div>❓ <strong>${this.esc(file.name)}</strong>: conto non riconosciuto, richiesta conferma.</div>`;
                     } else {
-                        statusDiv.innerHTML += `<div>⚠️ Nessuna transazione valida in <strong>${file.name}</strong>. Verifica che il file contenga colonne data/importo riconoscibili.</div>`;
+                        const count = this.dbMgr.insertTransactions(result.records);
+                        statusDiv.innerHTML += `<div>✅ Bank Excel <strong>${this.esc(file.name)}</strong> (conto: ${this.esc(result.conto.toUpperCase())}): ${count} nuove transazioni!</div>`;
                     }
-                } catch (err) {
-                    console.error(err);
-                    statusDiv.innerHTML += `<div>❌ Errore leggendo <strong>${file.name}</strong>: ${err.message}</div>`;
                 }
-            } else {
-                statusDiv.innerHTML += `<div>⚠️ Formato non supportato: ${file.name}</div>`;
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerHTML += `<div>❌ Errore caricando <strong>${this.esc(file.name)}</strong>: ${this.esc(err.message)}</div>`;
             }
         }
         this.renderTransactions();
         this.renderAuditLog();
+
+        if (this.pendingAccountFiles.length > 0) {
+            this.promptNextPendingAccount();
+        }
+    }
+
+    /* ❓ Chiede all'utente di assegnare manualmente il conto quando non è stato rilevato */
+    promptNextPendingAccount() {
+        if (this.pendingAccountFiles.length === 0) return;
+        const next = this.pendingAccountFiles[0];
+
+        document.getElementById('accountConfirmFileName').textContent = next.fileName;
+        const select = document.getElementById('accountConfirmSelect');
+        const knownAccounts = [...new Set(this.labeler.accountMappings.map(m => m.accountCode))];
+        select.innerHTML = knownAccounts.map(a => `<option value="${this.esc(a)}">${this.esc(a.toUpperCase())}</option>`).join('')
+            + `<option value="__custom__">Altro (specifica)...</option>`;
+
+        document.getElementById('accountConfirmCustomWrap').style.display = 'none';
+        document.getElementById('accountConfirmCustom').value = '';
+        document.getElementById('accountConfirmModal').classList.add('active');
+    }
+
+    onAccountConfirmSelectChange() {
+        const val = document.getElementById('accountConfirmSelect').value;
+        document.getElementById('accountConfirmCustomWrap').style.display = val === '__custom__' ? 'block' : 'none';
+    }
+
+    confirmPendingAccount() {
+        const select = document.getElementById('accountConfirmSelect');
+        let conto = select.value;
+        if (conto === '__custom__') {
+            conto = document.getElementById('accountConfirmCustom').value.trim().toLowerCase();
+        }
+        if (!conto) { alert("Specifica un codice conto valido."); return; }
+
+        const pending = this.pendingAccountFiles.shift();
+        pending.records.forEach(r => r.conto = conto);
+        const count = this.dbMgr.insertTransactions(pending.records);
+
+        document.getElementById('loadStatus').innerHTML +=
+            `<div>✅ Bank Excel <strong>${this.esc(pending.fileName)}</strong> (conto: ${this.esc(conto.toUpperCase())}): ${count} nuove transazioni!</div>`;
+
+        document.getElementById('accountConfirmModal').classList.remove('active');
+        this.renderTransactions();
+        this.renderAuditLog();
+
+        if (this.pendingAccountFiles.length > 0) {
+            this.promptNextPendingAccount();
+        }
     }
 
     /* 💾 ESPORTAZIONE CON DOWNLOAD MULTIPLI */
@@ -151,7 +234,8 @@ class App {
         const filterIds = [
             'txF_id_min', 'txF_id_max', 'txF_date_start', 'txF_date_end', 
             'txF_amt_min', 'txF_amt_max', 'txF_category_inc', 'txF_category_exc',
-            'txF_title_inc', 'txF_title_exc', 'txF_note_inc', 'txF_note_exc', 'txF_account',
+            'txF_tipo_inc', 'txF_tipo_exc', 'txF_note_inc', 'txF_note_exc', 'txF_conto',
+            'txF_emo_min', 'txF_emo_max',
             'logF_id_min', 'logF_id_max', 'logF_txId_min', 'logF_txId_max',
             'logF_action_inc', 'logF_action_exc', 'logF_field_inc', 'logF_field_exc',
             'logF_date_start', 'logF_date_end'
@@ -228,6 +312,17 @@ class App {
         if (iconEl) iconEl.textContent = current.dir === 'asc' ? ' ▲' : ' ▼';
     }
 
+    /* ⭐ Rendering statico delle stelline emotional value (1-5, non editabili qui) */
+    renderStars(value) {
+        if (value === null || value === undefined) return '<span class="stars-empty">—</span>';
+        let html = '<span class="stars-display">';
+        for (let i = 1; i <= 5; i++) {
+            html += i <= value ? '★' : '☆';
+        }
+        html += '</span>';
+        return html;
+    }
+
     /* 📝 TRANSAZIONI: RENDERING E FILTRI AVANZATI */
     renderTransactions() {
         this.saveFiltersToStorage(); // Salva lo stato dei filtri
@@ -236,13 +331,13 @@ class App {
         tbody.innerHTML = '';
         let txs = this.dbMgr.getActiveTransactions();
 
-        // Popola select Account
-        const accounts = [...new Set(txs.map(t => t.account))];
-        const accSelect = document.getElementById('txF_account');
-        const currentAcc = accSelect.value;
-        accSelect.innerHTML = '<option value="">Tutti</option>';
-        accounts.forEach(a => {
-            accSelect.innerHTML += `<option value="${a}" ${a === currentAcc ? 'selected' : ''}>${a.toUpperCase()}</option>`;
+        // Popola select Conto
+        const contos = [...new Set(txs.map(t => t.conto))];
+        const contoSelect = document.getElementById('txF_conto');
+        const currentConto = contoSelect.value;
+        contoSelect.innerHTML = '<option value="">Tutti</option>';
+        contos.forEach(c => {
+            contoSelect.innerHTML += `<option value="${this.esc(c)}" ${c === currentConto ? 'selected' : ''}>${this.esc((c || '').toUpperCase())}</option>`;
         });
 
         // Lettura filtri
@@ -255,12 +350,14 @@ class App {
         
         const fCatInc = document.getElementById('txF_category_inc').value;
         const fCatExc = document.getElementById('txF_category_exc').value;
-        const fTitleInc = document.getElementById('txF_title_inc').value;
-        const fTitleExc = document.getElementById('txF_title_exc').value;
+        const fTipoInc = document.getElementById('txF_tipo_inc').value;
+        const fTipoExc = document.getElementById('txF_tipo_exc').value;
         const fNoteInc = document.getElementById('txF_note_inc').value;
         const fNoteExc = document.getElementById('txF_note_exc').value;
         
-        const fAcc = document.getElementById('txF_account').value;
+        const fConto = document.getElementById('txF_conto').value;
+        const emoMin = document.getElementById('txF_emo_min') ? document.getElementById('txF_emo_min').value : '';
+        const emoMax = document.getElementById('txF_emo_max') ? document.getElementById('txF_emo_max').value : '';
 
         // Applicazione Filtri
         txs = txs.filter(t => {
@@ -271,9 +368,11 @@ class App {
             if (amtMin && t.amount < parseFloat(amtMin)) return false;
             if (amtMax && t.amount > parseFloat(amtMax)) return false;
             if (!this.matchTextFilterIncludeExclude(t.category, fCatInc, fCatExc)) return false;
-            if (!this.matchTextFilterIncludeExclude(t.title, fTitleInc, fTitleExc)) return false;
+            if (!this.matchTextFilterIncludeExclude(t.tipo, fTipoInc, fTipoExc)) return false;
             if (!this.matchTextFilterIncludeExclude(t.note, fNoteInc, fNoteExc)) return false;
-            if (fAcc && t.account !== fAcc) return false;
+            if (fConto && t.conto !== fConto) return false;
+            if (emoMin && (t.emotional_value === null || t.emotional_value < parseInt(emoMin))) return false;
+            if (emoMax && (t.emotional_value === null || t.emotional_value > parseInt(emoMax))) return false;
             return true;
         });
 
@@ -281,6 +380,8 @@ class App {
         const { col, dir } = this.sortState.tx;
         txs.sort((a, b) => {
             let valA = a[col], valB = b[col];
+            if (valA === null || valA === undefined) valA = '';
+            if (valB === null || valB === undefined) valB = '';
             if (typeof valA === 'string') valA = valA.toLowerCase();
             if (typeof valB === 'string') valB = valB.toLowerCase();
             if (valA < valB) return dir === 'asc' ? -1 : 1;
@@ -297,12 +398,13 @@ class App {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${t.id}</td>
-                <td>${t.date_str}</td>
+                <td>${this.esc(t.date_str)}</td>
                 <td class="${t.amount >= 0 ? 'amount-income' : 'amount-expense'}">€ ${t.amount.toFixed(2)}</td>
-                <td><span class="badge">${t.category}</span></td>
-                <td>${t.title}</td>
-                <td>${t.note}</td>
-                <td><strong style="color:var(--primary);">${t.account.toUpperCase()}</strong></td>
+                <td><span class="badge">${this.esc(t.category)}</span></td>
+                <td>${this.esc(t.tipo)}</td>
+                <td>${this.esc(t.note)}</td>
+                <td><strong style="color:var(--primary);">${this.esc((t.conto || '?').toUpperCase())}</strong></td>
+                <td>${this.renderStars(t.emotional_value)}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-edit-sm" onclick="app.openTransactionModal(${t.id})">✏️</button>
                     <button class="btn btn-danger-sm" onclick="app.deleteTx(${t.id})">🗑️</button>
@@ -362,11 +464,11 @@ class App {
             tr.innerHTML = `
                 <td>${log.id}</td>
                 <td>${log.transaction_id}</td>
-                <td><span class="badge badge-status ${log.action}">${log.action}</span></td>
-                <td>${log.field_changed || '-'}</td>
-                <td>${log.old_value || '-'}</td>
-                <td>${log.new_value || '-'}</td>
-                <td>${log.timestamp}</td>
+                <td><span class="badge badge-status ${this.esc(log.action)}">${this.esc(log.action)}</span></td>
+                <td>${this.esc(log.field_changed || '-')}</td>
+                <td>${this.esc(log.old_value || '-')}</td>
+                <td>${this.esc(log.new_value || '-')}</td>
+                <td>${this.esc(log.timestamp)}</td>
             `;
             tbody.appendChild(tr);
         });
@@ -388,8 +490,9 @@ class App {
             document.getElementById('txForm_amount').value = tx.amount;
             document.getElementById('txForm_note').value = tx.note;
             document.getElementById('txForm_category').value = tx.category;
-            document.getElementById('txForm_title').value = tx.title;
-            document.getElementById('txForm_account').value = tx.account;
+            document.getElementById('txForm_tipo').value = tx.tipo;
+            document.getElementById('txForm_conto').value = tx.conto;
+            this.setStarPicker(tx.emotional_value);
         } else {
             titleEl.textContent = "Nuova Transazione Manuale";
             document.getElementById('txForm_id').value = "";
@@ -397,8 +500,9 @@ class App {
             document.getElementById('txForm_amount').value = "";
             document.getElementById('txForm_note').value = "";
             document.getElementById('txForm_category').value = "nc";
-            document.getElementById('txForm_title').value = "nc";
-            document.getElementById('txForm_account').value = "isp";
+            document.getElementById('txForm_tipo').value = "nc";
+            document.getElementById('txForm_conto').value = "";
+            this.setStarPicker(null);
         }
 
         modal.classList.add('active');
@@ -406,23 +510,42 @@ class App {
 
     closeTransactionModal() { document.getElementById('txFormModal').classList.remove('active'); }
 
-    // Live-predict mentre l'utente digita: aggiorna categoria/titolo solo se
-    // sono ancora vuoti o al valore di default "nc", per non sovrascrivere
-    // scelte manuali già fatte dall'utente.
+    /* ⭐ Star picker interattivo nel form transazione */
+    setStarPicker(value) {
+        document.getElementById('txForm_emotional_value').value = value ?? '';
+        this.renderStarPicker(value);
+    }
+
+    renderStarPicker(value) {
+        const container = document.getElementById('starPicker');
+        if (!container) return;
+        container.innerHTML = '';
+        for (let i = 1; i <= 5; i++) {
+            const star = document.createElement('span');
+            star.textContent = value && i <= value ? '★' : '☆';
+            star.className = 'star-picker-item';
+            star.onclick = () => {
+                const current = parseInt(document.getElementById('txForm_emotional_value').value) || 0;
+                const newVal = current === i ? null : i; // click sulla stessa stella = azzera
+                document.getElementById('txForm_emotional_value').value = newVal ?? '';
+                this.renderStarPicker(newVal);
+            };
+            container.appendChild(star);
+        }
+    }
+
     onNoteInputAutoPredict() {
+        const isNew = !document.getElementById('txForm_id').value;
+        if (!isNew) return;
+
         const note = document.getElementById('txForm_note').value;
         const amt = parseFloat(document.getElementById('txForm_amount').value) || 0;
-        if (note.length < 3) return;
-
-        const catEl = document.getElementById('txForm_category');
-        const titleEl = document.getElementById('txForm_title');
-        const catEmpty = !catEl.value.trim() || catEl.value.trim() === 'nc';
-        const titleEmpty = !titleEl.value.trim() || titleEl.value.trim() === 'nc';
-        if (!catEmpty && !titleEmpty) return;
-
-        const pred = this.labeler.predict(note, amt);
-        if (catEmpty && pred.category !== 'nc') catEl.value = pred.category;
-        if (titleEmpty && pred.title !== 'nc') titleEl.value = pred.title;
+        
+        if (note.length > 2) {
+            const pred = this.labeler.predict(note, amt);
+            if (pred.category !== 'nc') document.getElementById('txForm_category').value = pred.category;
+            if (pred.tipo !== 'nc') document.getElementById('txForm_tipo').value = pred.tipo;
+        }
     }
 
     saveTransactionFromModal() {
@@ -430,25 +553,19 @@ class App {
         const date_str = document.getElementById('txForm_date').value;
         const amount = parseFloat(document.getElementById('txForm_amount').value) || 0;
         const note = document.getElementById('txForm_note').value.trim();
-        let category = document.getElementById('txForm_category').value.trim() || 'nc';
-        let title = document.getElementById('txForm_title').value.trim() || 'nc';
-        const account = document.getElementById('txForm_account').value.trim().toLowerCase() || 'isp';
+        const category = document.getElementById('txForm_category').value.trim() || 'nc';
+        const tipo = document.getElementById('txForm_tipo').value.trim() || 'nc';
+        const conto = document.getElementById('txForm_conto').value.trim().toLowerCase();
+        const emoRaw = document.getElementById('txForm_emotional_value').value;
+        const emotional_value = emoRaw ? parseInt(emoRaw) : null;
 
         if (!date_str) { alert("Seleziona una data valida."); return; }
-
-        // Se l'utente non ha specificato categoria/titolo (o li ha lasciati
-        // al default "nc"), applica l'auto-labeling in base alla nota e al
-        // segno dell'importo, così come farebbe l'import automatico.
-        if ((category === 'nc' || title === 'nc') && note.length > 0) {
-            const pred = this.labeler.predict(note, amount);
-            if (category === 'nc' && pred.category !== 'nc') category = pred.category;
-            if (title === 'nc' && pred.title !== 'nc') title = pred.title;
-        }
+        if (!conto) { alert("Specifica un conto."); return; }
 
         if (id) {
-            this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
+            this.dbMgr.updateTransaction(parseInt(id), { category, tipo, note, amount, conto, emotional_value });
         } else {
-            this.dbMgr.insertSingleTransaction({ date_str, amount, category, title, note, account });
+            this.dbMgr.insertSingleTransaction({ date_str, amount, category, tipo, note, conto, emotional_value });
         }
 
         this.closeTransactionModal();
@@ -467,5 +584,3 @@ class App {
 
 const app = new App();
 window.onload = () => app.init();
-
-
