@@ -93,8 +93,14 @@ class App {
             const buffer = await file.arrayBuffer();
 
             if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
-                this.dbMgr.loadBinary(buffer);
-                statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
+                try {
+                    this.dbMgr.loadBinary(buffer);
+                    const n = this.dbMgr.getActiveTransactions().length;
+                    statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato (${n} transazioni).</div>`;
+                } catch (err) {
+                    console.error(err);
+                    statusDiv.innerHTML += `<div style="color:var(--expense)">❌ DB <strong>${file.name}</strong>: ${err.message}</div>`;
+                }
             } else if (fn.endsWith('.xlsx') || fn.endsWith('.xls') || fn.endsWith('.csv') || fn.endsWith('.txt')) {
                 try {
                     const records = BankParser.parseFile(buffer, file.name, this.labeler);
@@ -449,10 +455,16 @@ class App {
             if (title === 'nc' && pred.title !== 'nc') title = pred.title;
         }
 
-        if (id) {
-            this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
-        } else {
-            this.dbMgr.insertSingleTransaction({ date_str, amount, category, title, note, account });
+        try {
+            if (id) {
+                this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
+            } else {
+                this.dbMgr.insertSingleTransaction({ date_str, amount, category, title, note, account });
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Errore nel salvataggio: " + err.message);
+            return;
         }
 
         this.closeTransactionModal();
