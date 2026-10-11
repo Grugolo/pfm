@@ -3,6 +3,7 @@ class App {
     constructor() {
         this.dbMgr = new DatabaseManager();
         this.labeler = new AutoLabeler();
+        this.dash = new Dashboard(this.dbMgr);
         
         this.sortState = {
             tx: { col: 'date_str', dir: 'desc' },
@@ -15,6 +16,7 @@ class App {
     async init() {
         await this.dbMgr.init();
         this.loadFiltersFromStorage(); // Ripristina i filtri salvati
+        this.dash.mount();
         this.renderTransactions();
         this.renderAuditLog();
     }
@@ -25,6 +27,7 @@ class App {
         
         document.getElementById(tabId).classList.add('active');
         btn.classList.add('active');
+        if (tabId === 'dashboardTab') this.dash.render();
     }
 
     /* ⚙️ GESTIONE MODALE IMPOSTAZIONI */
@@ -90,8 +93,14 @@ class App {
             const buffer = await file.arrayBuffer();
 
             if (fn.endsWith('.db') || fn.endsWith('.sqlite')) {
-                this.dbMgr.loadBinary(buffer);
-                statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato.</div>`;
+                try {
+                    this.dbMgr.loadBinary(buffer);
+                    const n = this.dbMgr.getActiveTransactions().length;
+                    statusDiv.innerHTML += `<div>✅ DB: <strong>${file.name}</strong> caricato (${n} transazioni).</div>`;
+                } catch (err) {
+                    console.error(err);
+                    statusDiv.innerHTML += `<div style="color:var(--expense)">❌ DB <strong>${file.name}</strong>: ${err.message}</div>`;
+                }
             } else if (fn.endsWith('.xlsx') || fn.endsWith('.xls') || fn.endsWith('.csv') || fn.endsWith('.txt')) {
                 try {
                     const records = BankParser.parseFile(buffer, file.name, this.labeler);
@@ -291,8 +300,8 @@ class App {
         // Rendering HTML
         let inc = 0, exp = 0;
         txs.forEach(t => {
-            if (t.amount > 0) inc += t.amount;
-            else exp += Math.abs(t.amount);
+            const f = Stats.flow(t); // esclude T, sottrae rimborsi R
+            inc += f.inc; exp += f.exp;
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -314,6 +323,7 @@ class App {
         document.getElementById('totalTxCount').textContent = txs.length;
         document.getElementById('totalIncome').textContent = `€ ${inc.toFixed(2)}`;
         document.getElementById('totalExpense').textContent = `€ ${exp.toFixed(2)}`;
+        this.dash.refreshIfActive();
     }
 
     /* 📋 AUDIT LOG: RENDERING E FILTRI AVANZATI */
@@ -445,10 +455,16 @@ class App {
             if (title === 'nc' && pred.title !== 'nc') title = pred.title;
         }
 
-        if (id) {
-            this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
-        } else {
-            this.dbMgr.insertSingleTransaction({ date_str, amount, category, title, note, account });
+        try {
+            if (id) {
+                this.dbMgr.updateTransaction(parseInt(id), { category, title, note, amount, account });
+            } else {
+                this.dbMgr.insertSingleTransaction({ date_str, amount, category, title, note, account });
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Errore nel salvataggio: " + err.message);
+            return;
         }
 
         this.closeTransactionModal();
